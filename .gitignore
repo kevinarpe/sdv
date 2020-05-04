@@ -1,0 +1,14 @@
+# Vi
+.*.swp
+.sw*
+
+# Important library source code for IntelliJ browsing
+lib/
+
+# IntelliJ IDEA / CLion
+.idea/
+cmake-build-debug/
+*.ipr
+*.iws
+*.iml
+
