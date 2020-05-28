@@ -18,20 +18,15 @@
 #include "LineNumberAreaWidget.h"
 #include "PlainTextEdit.h"
 #include "CircleWidget.h"
+#include "TreeNodeExpanderWidget.h"
 
 namespace SDV {
+
+// TODO: Fix NPE: Ctrl+F: abc<crash>
 
 // Ref: https://stackoverflow.com/a/28734794/257299
 struct TextWidget::Private
 {
-    static void
-    reset(TextWidget& self)
-    {
-        self.m_findTextThreadWorker = nullptr;
-        self.m_lastFindResultIndex = -1;
-        self.m_plainTextLength = -1;
-    }
-
     static void
     removeLastFindResultFormatting(TextWidget& self)
     {
@@ -226,22 +221,61 @@ struct TextWidget::Private
             markContentsDirty(textBlock.position() + formatRange->start, formatRange->length);
     }
 
+//    LAST: Ctrl+G: "8:20".  Fix the CircleWidget to be perfectly centered over the char!
     static void
     slotGoToLineColumn(TextWidget& self, const int lineNumber, const int columnNumber)
     {
-        qDebug() << "slotGoToLineColumn()";
+        // TODO: Be more clear when -1 == lineNumber or -1 == columnNumber
+        const QTextBlock& textBlock = self.m_plainTextEdit->document()->findBlockByLineNumber(lineNumber - 1);
+        if (false == textBlock.isValid()) {
+            int dummy = 1;
+            return;
+        }
+        const QString& text = textBlock.text();
+        if (columnNumber < 0 || columnNumber > text.length()) {
+            int dummy = 1;
+            return;
+        }
+        const QRectF& bbg = self.m_plainTextEdit->blockBoundingGeometry(textBlock);
+        QPointF co = self.m_plainTextEdit->contentOffset();
+        // Magic: It seems on GNU/Linux/KDE, there is always a magic 4 pixel horizontal indent that does not appear
+        // in 'co' above.  Normally, co.x() is zero.  If so, bump to 4 (magically).
+        if (0.0 == co.x()) {
+            co.rx() = 4;
+        }
+        const QRectF& bbgt = bbg.translated(co);
+        const QRect& rect =
+            QRect{
+                self.m_plainTextEdit->viewport()->mapToParent(bbgt.topLeft().toPoint()),
+                self.m_plainTextEdit->viewport()->mapToParent(bbgt.bottomRight().toPoint())};
+        const QRect& rect2 =
+            QRect{
+                self.m_plainTextEdit->mapToParent(rect.topLeft()),
+                self.m_plainTextEdit->mapToParent(rect.bottomRight())};
+
+        const QFontMetrics& fm = self.m_plainTextEdit->fontMetrics();
+        qDebug() << text.left(columnNumber);
+        const int xOffset = fm.horizontalAdvance(text.left(columnNumber - 1)) + fm.horizontalAdvance(text[columnNumber - 1]) / 2;
+
+        const int width = 50;
+        self.m_circleWidget->setGeometry(QRect{rect2.x() + xOffset - width / 2, rect2.y() + rect2.height() / 2 - width / 2, width, width});
+        self.m_circleWidget->setVisible(true);
+        // Absolutely necessary!
+        self.m_circleWidget->raise();
     }
 
     static void
     slotGoToOffset(TextWidget& self, const int offset)
     {
-        qDebug() << "slotGoToOffset()";
+        // TODO: Gracefully handle -1 == offset
+//        qDebug() << "slotGoToOffset()";
     }
 
     static void
     slotGoToWidgetHidden(TextWidget& self)
     {
-        qDebug() << "slotGoToWidgetHidden()";
+        // TODO: Hide any go to indicators
+//        qDebug() << "slotGoToWidgetHidden()";
     }
 
     // FindWidget::signalQueryChanged
@@ -259,7 +293,7 @@ struct TextWidget::Private
             if ( ! self.m_findTextThread->isRunning()) {
                 self.m_findTextThread->start();
             }
-            self.m_findTextThreadWorker->beforeEmitSignal();
+            self.m_nullableFindTextThreadWorker->beforeEmitSignal();
             emit self.signalFindChanged(findText, isCaseSensitive, isRegex);
         }
     }
@@ -347,12 +381,12 @@ kDefaultFont{"Deja Vu Sans Mono", 12};
 TextWidget::
 TextWidget(QWidget* parent /*= nullptr*/,
            Qt::WindowFlags flags /*= Qt::WindowFlags()*/)
-    : QWidget(parent, flags)
+    : Base{parent, flags}, m_lastFindResultIndex{-1}, m_plainTextLength{-1}
 {
-    Private::reset(*this);
+//    Private::reset(*this);
 
     m_circleWidget = new CircleWidget{this};
-    m_circleWidget->setGeometry(QRect{320, 240, 50, 50});
+    m_circleWidget->setVisible(false);
 
     m_findWidget = new FindWidget{};
     m_findWidget->setVisible(false);
@@ -415,7 +449,7 @@ TextWidget(QWidget* parent /*= nullptr*/,
 // protected virtual
 void
 TextWidget::
-showEvent(QShowEvent* event) // override
+showEvent(QShowEvent* event)  // override
 {
     m_plainTextEdit->setFocus();
 //    m_circleWidget->raise();
@@ -457,14 +491,18 @@ slotSetPlainText(const QString& plainText,
         textLayout->setFormats(textBlockFormatRangeVec);
     }
     Private::afterUpdateDocumentFormats(*this);
-
-    m_findTextThreadWorker = new FindThreadWorker(plainText);
+    // TODO: Fix this bug: Ctrl+PageDown (next tab), Ctrl+PageUp (prev tab), Ctrl+F, type any char, <crash>
+    qDebug() << "FindThreadWorker";
+    m_nullableFindTextThreadWorker = new FindThreadWorker{plainText};
     // Ref: https://doc.qt.io/qt-5/qthread.html#details
-    m_findTextThreadWorker->moveToThread(m_findTextThread);
-    QObject::connect(m_findTextThread, &QThread::finished, m_findTextThreadWorker, &QObject::deleteLater);
-    QObject::connect(this, &TextWidget::signalFindChanged, m_findTextThreadWorker, &FindThreadWorker::slotFind);
+    m_nullableFindTextThreadWorker->moveToThread(m_findTextThread);
+
+    QObject::connect(m_findTextThread, &QThread::finished, m_nullableFindTextThreadWorker, &QObject::deleteLater);
+
+    QObject::connect(this, &TextWidget::signalFindChanged, m_nullableFindTextThreadWorker, &FindThreadWorker::slotFind);
+
     QObject::connect(
-        m_findTextThreadWorker, &FindThreadWorker::signalFindComplete,
+        m_nullableFindTextThreadWorker, &FindThreadWorker::signalFindComplete,
         [this](const FindThreadWorker::Result& result) { Private::slotFindComplete(*this, result); });
 }
 
@@ -473,6 +511,9 @@ void
 TextWidget::
 slotFind()
 {
+    // Do not allow both find and go to widgets to be active simultaneously.
+    m_goToWidget->animatedHide();
+
     if (m_findWidget->isVisible()) {
         m_findWidget->findLineEdit()->setFocus();
     }
@@ -488,6 +529,9 @@ void
 TextWidget::
 slotGoTo()
 {
+    // Do not allow both find and go to widgets to be active simultaneously.
+    m_findWidget->animatedHide();
+
     if (m_goToWidget->isVisible()) {
         m_goToWidget->findLineEdit()->setFocus();
     }
@@ -497,14 +541,14 @@ slotGoTo()
 //        Private::afterUpdateDocumentFormats(*this);
     }
 }
-
-// protected
-void
-TextWidget::
-hideEvent(QHideEvent* event) // override
-{
-    QWidget::hideEvent(event);
-    Private::reset(*this);
-}
+//
+//// protected
+//void
+//TextWidget::
+//hideEvent(QHideEvent* event)  // override
+//{
+//    QWidget::hideEvent(event);
+//    Private::reset(*this);
+//}
 
 }  // namespace SDV

@@ -16,8 +16,9 @@ class CircleWidget : public QWidget
     Q_OBJECT
 
 public:
+    using Base = QWidget;
     explicit CircleWidget(QWidget* parent = nullptr, Qt::WindowFlags f = Qt::WindowFlags())
-        : QWidget{parent, f}
+        : Base{parent, f}
     {}
 //
 //    QPaintEngine* paintEngine() const override
@@ -35,7 +36,7 @@ protected:
 //    LAST: FINISH THE DONUT!
     void paintEvent(QPaintEvent* event) override
     {
-        QPainter painter(this);
+        QPainter painter{this};
         painter.setRenderHint(QPainter::RenderHint::Antialiasing);
         const int w = width();
         const int h = height();

@@ -15,6 +15,7 @@
 namespace SDV {
 
 class LineNumberAreaWidget;
+class TreeNodeExpanderWidget;
 
 class PlainTextEdit : public QPlainTextEdit, public IWidgetWithLineNumberArea
 {
@@ -26,6 +27,8 @@ public:
     int lineNumberAreaWidth() const override;
     void lineNumberAreaPaintEvent(QPaintEvent* event) override;
     LineNumberAreaWidget* lineNumberAreaWidget() const { return m_lineNumberAreaWidget; }
+    using QPlainTextEdit::blockBoundingGeometry;
+    using QPlainTextEdit::contentOffset;
 
 public slots:
     void slotScrollTopLeft();
@@ -51,6 +54,7 @@ private:
     QPoint m_lastMouseMovePoint;
     int m_lastMouseOverBlockNumber;
     LineNumberAreaWidget* m_lineNumberAreaWidget;
+    TreeNodeExpanderWidget* m_treeNodeExpanderWidget;
 };
 
 }  // namespace SDV

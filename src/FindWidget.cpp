@@ -10,7 +10,6 @@
 #include <QHBoxLayout>
 #include <QDebug>
 #include <QEvent>
-#include "FindLineEdit.h"
 #include "BalloonTip.h"
 
 namespace SDV {
@@ -66,8 +65,7 @@ struct FindWidget::Private
     slotSpecialKeyPressed(FindWidget& self, const FindLineEdit::KeySequence keySequence)
     {
         if (FindLineEdit::KeySequence::Escape == keySequence) {
-            self.hide();
-            emit self.signalHidden();
+            self.animatedHide();
         }
         else if (FindLineEdit::KeySequence::Enter == keySequence) {
             emit self.signalNextMatch();
@@ -114,20 +112,20 @@ struct FindWidget::Private
 // public explicit
 FindWidget::
 FindWidget(QWidget* parent /*= nullptr*/)
-    : QWidget{parent}
+    : Base{parent}
 {
     QLabel* findLabel = new QLabel{"Find:"};
 
     m_findLineEdit = new FindLineEdit{};
     QObject::connect(m_findLineEdit, &FindLineEdit::signalSpecialKeyPressed,
                      [this](FindLineEdit::KeySequence keySequence)
-                     { FindWidget::Private::slotSpecialKeyPressed(*this, keySequence); });
+                     { Private::slotSpecialKeyPressed(*this, keySequence); });
     QObject::connect(m_findLineEdit, &FindLineEdit::textChanged,
-                     [this]() { FindWidget::Private::slotTextChanged(*this); });
+                     [this]() { Private::slotTextChanged(*this); });
     QObject::connect(m_findLineEdit, &FindLineEdit::signalFocusIn,
-                     [this]() { FindWidget::Private::slotFineLineEditFocusIn(*this); });
+                     [this]() { Private::slotFineLineEditFocusIn(*this); });
     QObject::connect(m_findLineEdit, &FindLineEdit::signalFocusOut,
-                     [this]() { FindWidget::Private::slotFineLineEditFocusOut(*this); });
+                     [this]() { Private::slotFineLineEditFocusOut(*this); });
 
     m_matchCountLabel = new QLabel{};
     m_matchCountLabel->setToolTip("Match count");
@@ -151,13 +149,13 @@ FindWidget(QWidget* parent /*= nullptr*/)
     // Intentional: Do not accept focus by clicking -- only tab.
     m_matchCaseCheckBox->setFocusPolicy(Qt::FocusPolicy::TabFocus);
     QObject::connect(m_matchCaseCheckBox, &QCheckBox::stateChanged,
-                     [this](int state) { FindWidget::Private::slotMatchCaseCheckBoxStateChanged(*this, state); });
+                     [this](int state) { Private::slotMatchCaseCheckBoxStateChanged(*this, state); });
 
     m_regexCheckBox = new QCheckBox{"Rege&x"};
     // Intentional: Do not accept focus by clicking -- only tab.
     m_regexCheckBox->setFocusPolicy(Qt::FocusPolicy::TabFocus);
     QObject::connect(m_regexCheckBox, &QCheckBox::stateChanged,
-                     [this](int state) { FindWidget::Private::slotRegexCheckBoxStateChanged(*this, state); });
+                     [this](int state) { Private::slotRegexCheckBoxStateChanged(*this, state); });
 
     QHBoxLayout* layout = new QHBoxLayout{};
     layout->setContentsMargins(5, 0, 5, 0);
@@ -173,7 +171,7 @@ FindWidget(QWidget* parent /*= nullptr*/)
 // protected
 void
 FindWidget::
-showEvent(QShowEvent* event) // override
+showEvent(QShowEvent* event)  // override
 {
     m_findLineEdit->setFocus();
     Private::textChanged(*this, Private::EmitSignals::No);
@@ -183,7 +181,7 @@ showEvent(QShowEvent* event) // override
 // protected
 void
 FindWidget::
-hideEvent(QHideEvent* event) // override
+hideEvent(QHideEvent* event)  // override
 {
     // Escape to hide this widget will *not* trigger a focus-out event.  Bizarre!
     BalloonTip::hideBalloon();
@@ -193,7 +191,7 @@ hideEvent(QHideEvent* event) // override
 // protected
 bool
 FindWidget::
-event(QEvent* event) // override
+event(QEvent* event)  // override
 {
     if (QEvent::Type::WindowDeactivate == event->type()) {
         BalloonTip::hideBalloon();

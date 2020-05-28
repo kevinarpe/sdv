@@ -193,7 +193,8 @@ struct MainWindow::Private
         self.m_fileCloseAction->setEnabled(true);
         TreeModel* const treeModel = new TreeModel{pw.rootVec(), self.m_treeView};
         self.m_treeView->setModel(treeModel);
-        treeModel->setIndexWidgets(self.m_treeView);
+        // Intentional: The TreeView is dead due to performance issues.
+//        treeModel->setIndexWidgets(self.m_treeView);
         self.m_treeView->expandAll();
 
         if (CLIPBOARD_ != self.m_absFilePath && STDIN_ != self.m_absFilePath) {
@@ -205,7 +206,7 @@ struct MainWindow::Private
             QTextBoundaryFinders::countBoundaries(QTextBoundaryFinder::BoundaryType::Grapheme, pw.jsonText());
         const int byteCount = countBytes(pw.jsonText());
         self.m_statusBarTextViewLabelBaseText =
-            QString("%1 %2, %3 Unicode %4, %5 UTF-8 %6")
+            QString("%1 %2 | %3 Unicode %4 | %5 UTF-8 %6")
                 .arg(locale_.toString(lineCount))
                 .arg(1 == lineCount ? "line" : "lines")
                 .arg(locale_.toString(graphemeCount))
@@ -298,7 +299,7 @@ struct MainWindow::Private
             QTextBoundaryFinders::countBoundaries(QTextBoundaryFinder::BoundaryType::Grapheme, selectedText);
         const int byteCount = countBytes(selectedText);
         const QString& x = self.m_statusBarTextViewLabelBaseText
-                           + QString{" | <b><u>Selection</u></b>: %1 %2, %3 Unicode %4, %5 UTF-8 %6"}
+                           + QString{" || <b><u>Selection</u></b>: %1 %2 | %3 Unicode %4 | %5 UTF-8 %6"}
                                .arg(locale_.toString(lineCount))
                                .arg(1 == lineCount ? "line" : "lines")
                                .arg(locale_.toString(graphemeCount))
@@ -368,12 +369,6 @@ struct MainWindow::Private
         if (shallExit(self)) {
             qApp->exit(EXIT_SUCCESS);
         }
-    }
-
-    static void
-    slotGoTo(MainWindow& self)
-    {
-        qDebug() << "slotGoTo_()";
     }
 
     static void
@@ -515,8 +510,7 @@ MainWindow(MainWindowManager& mainWindowManager,
 
     QMenu* editMenu = menuBar()->addMenu("&Edit");
     editMenu->addAction("&Find...", m_textWidget, &TextWidget::slotFind, QKeySequence::StandardKey::Find);
-    editMenu->addAction(
-        "&Go To...", [this]() { Private::slotGoTo(*this); }, QKeySequence{Qt::CTRL + Qt::Key_G});
+    editMenu->addAction("&Go To...", m_textWidget, &TextWidget::slotGoTo, QKeySequence{Qt::CTRL + Qt::Key_G});
 
     m_windowMenu = menuBar()->addMenu("&Window");
     QObject::connect(m_windowMenu, &QMenu::triggered,
@@ -634,7 +628,7 @@ closeEvent(QCloseEvent* event)
 // protected
 void
 MainWindow::
-dragEnterEvent(QDragEnterEvent* event) // override
+dragEnterEvent(QDragEnterEvent* event)  // override
 {
     qDebug() << "dragEnterEvent(): " << event->mimeData()->formats() << "[" << event->mimeData()->text() << "]";
 
@@ -648,7 +642,7 @@ dragEnterEvent(QDragEnterEvent* event) // override
 // protected
 void
 MainWindow::
-dropEvent(QDropEvent* event) // override
+dropEvent(QDropEvent* event)  // override
 {
     // Ref: https://wiki.qt.io/Drag_and_Drop_of_files
     assert(event->mimeData()->hasUrls());

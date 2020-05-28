@@ -10,7 +10,7 @@ namespace SDV {
 // protected
 void
 FindLineEdit::
-keyPressEvent(QKeyEvent* event) // override
+keyPressEvent(QKeyEvent* event)  // override
 {
     QLineEdit::keyPressEvent(event);
 
@@ -48,7 +48,7 @@ keyPressEvent(QKeyEvent* event) // override
 // protected
 void
 FindLineEdit::
-focusInEvent(QFocusEvent* event) // override
+focusInEvent(QFocusEvent* event)  // override
 {
     QLineEdit::focusInEvent(event);
     emit signalFocusIn();
@@ -57,7 +57,7 @@ focusInEvent(QFocusEvent* event) // override
 // protected
 void
 FindLineEdit::
-focusOutEvent(QFocusEvent* event) // override
+focusOutEvent(QFocusEvent* event)  // override
 {
     QLineEdit::focusOutEvent(event);
     emit signalFocusOut();

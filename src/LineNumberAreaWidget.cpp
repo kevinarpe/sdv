@@ -19,7 +19,7 @@ const // override
 // protected
 void
 LineNumberAreaWidget::
-paintEvent(QPaintEvent* event) // override
+paintEvent(QPaintEvent* event)  // override
 {
     m_widget.lineNumberAreaPaintEvent(event);
 }

@@ -120,7 +120,8 @@ m_static_qRegisterMetaType = qRegisterMetaType<FindThreadWorker::Result>("Result
 // public explicit
 FindThreadWorker::
 FindThreadWorker(const QString& plainText)
-    : m_atomicHasWaitingSignal{false},
+    : Base{},
+      m_atomicHasWaitingSignal{false},
       m_plainText{plainText},
       m_lineOffsetVec{Private::createLineOffsetVec(plainText)}
 {}

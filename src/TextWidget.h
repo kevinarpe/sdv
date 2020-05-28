@@ -28,12 +28,13 @@ public:
 
     explicit TextWidget(QWidget* parent = nullptr,
                         Qt::WindowFlags flags = Qt::WindowFlags());
+    ~TextWidget() override = default;
 
     PlainTextEdit* plainTextEdit() const { return m_plainTextEdit; }
 
 protected:
     void showEvent(QShowEvent* event) override;
-    void hideEvent(QHideEvent* event) override;
+//    void hideEvent(QHideEvent* event) override;
 
 public slots:
     void slotSetPlainText(const QString& plainText,
@@ -53,7 +54,8 @@ private:
     GoToWidget* m_goToWidget;
     PlainTextEdit* m_plainTextEdit;
     QThread* m_findTextThread;
-    FindThreadWorker* m_findTextThreadWorker;
+    // @Nullable
+    FindThreadWorker* m_nullableFindTextThreadWorker;
     FindThreadWorker::Result m_lastFindResult;
     int m_lastFindResultIndex;
     // Intentional: Do not store full copy of plainText.  It may be very large.

@@ -14,18 +14,10 @@ namespace SDV {
 class TreeItem
 {
 public:
-    explicit TreeItem(JsonNodeType jsonNodeType, IsRichText isRichText, const QString& text, TreeItem* parent = nullptr)
-        : m_jsonNodeTypes{jsonNodeType}, m_textFormat{isRichText.textFormat}, m_text{text}, m_parent{parent}
-    {
-        if (nullptr != parent) {
-            parent->m_childVec.append(this);
-        }
-    }
+    explicit TreeItem(JsonNodeType jsonNodeType, IsRichText isRichText, const QString& text, TreeItem* parent = nullptr);
     ~TreeItem();
 
-    void appendChild(TreeItem* child);
     int rowIndex() const;
-//    QVector<TreeItem*>& childVec() { return m_childVec; }
     const QVector<TreeItem*>& childVec() const { return m_childVec; }
 
     TreeItem* const m_parent;

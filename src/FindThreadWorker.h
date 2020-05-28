@@ -16,6 +16,8 @@ class FindThreadWorker : public QObject
     Q_OBJECT
 
 public:
+    using Base = QObject;
+    // Intentional: No parent b/c "QObject::moveToThread: Cannot move objects with a parent"
     explicit FindThreadWorker(const QString& plainText);
 
     struct Result {

@@ -5,7 +5,7 @@
 #ifndef SDV_FINDWIDGET_H
 #define SDV_FINDWIDGET_H
 
-#include <QWidget>
+#include "SmoothShowHideWidget.h"
 #include <QRegularExpression>
 #include "FindLineEdit.h"
 class QLabel;
@@ -14,12 +14,14 @@ class QCheckBox;
 
 namespace SDV {
 
-class FindWidget : public QWidget
+class FindWidget : public SmoothShowHideWidget
 {
     Q_OBJECT
 
 public:
+    using Base = SmoothShowHideWidget;
     explicit FindWidget(QWidget* parent = nullptr);
+    ~FindWidget() override = default;
     FindLineEdit* findLineEdit() const { return m_findLineEdit; }
     QLabel* matchCountLabel() const { return m_matchCountLabel; }
 
@@ -28,7 +30,6 @@ signals:
     void signalNextMatch();
     void signalPrevMatch();
     void signalSpecialKeyPressed(FindLineEdit::KeySequence keySequence);
-    void signalHidden();
 
 protected:
     void showEvent(QShowEvent* event) override;

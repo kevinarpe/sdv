@@ -11,6 +11,7 @@ namespace SDV {
 
 class IWidgetWithLineNumberArea;
 
+// Ref: https://doc.qt.io/qt-5/qtwidgets-widgets-codeeditor-example.html
 class LineNumberAreaWidget : public QWidget
 {
 public:

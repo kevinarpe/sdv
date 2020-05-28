@@ -57,6 +57,9 @@ getAbsFilePath(const QString& filePath);
  * -> Useful in *both* text and tree views... and even "selectable" in text view is still useful.
  * Can we create a "cram-down" view?  "a":{\n\t...\n\t"b":{\n\t\t...\n\t\t"c":{\n\t\t\t...\n\t\t\t"key": 123
  * -> Again, a checkbox could be used to quickly toggle between full and cram-down visual modes.
+ * The TreeView is horribly slow.  We need to add +/- icons in the gutter.
+ * -> All the "tree" work is not a loss.  Why?  We will need it to correctly impl +/- icons in the gutter.
+ * After closing document, clear the status bar.
  *
  * x Input?  x Clipboard, x file, x drag-n-drop
  * x Multiple tabs->windows for multiple inputs

@@ -9,7 +9,7 @@
 #include <QPainter>
 #include <QShortcut>
 #include "LineNumberAreaWidget.h"
-#include "CircleWidget.h"
+#include "TreeNodeExpanderWidget.h"
 
 namespace SDV {
 
@@ -38,8 +38,33 @@ struct PlainTextEdit::Private
         self.viewport()->setCursor(cursor);
     }
 
+    static void
+    setClipRect(PlainTextEdit& self, QPaintEvent* event, QPainter* painter)
+    {
+        QRect rect = event->rect();
+        const int adjEventBottom = getAdjEventBottom(self, event);
+        if (rect.bottom() > adjEventBottom) {
+            rect.setBottom(adjEventBottom);
+            painter->setClipRect(rect);
+        }
+    }
+
     static int
-    getAdjEventBottom(PlainTextEdit& self, QPaintEvent* event);
+    getAdjEventBottom(PlainTextEdit& self, QPaintEvent* event)
+    {
+        int eventBottom = event->rect().bottom();
+        if (self.horizontalScrollBar()->isVisible()) {
+            const QPoint& topLeft = QPoint{0, 0};
+            const QPoint& hbarPosG = self.horizontalScrollBar()->mapToGlobal(topLeft);
+            // Important: Use m_lineNumberAreaWidget, not this, b/c event is relative to m_lineNumberAreaWidget.
+            const QPoint& hbarPosG2 = self.m_lineNumberAreaWidget->mapFromGlobal(hbarPosG);
+            if (eventBottom >= hbarPosG2.y()) {
+                // Remember: hbarPosG2.y() is the *first* vertical pixel of hbar.  We want to exclude this vertical pixel.
+                eventBottom = hbarPosG2.y() - 1;
+            }
+        }
+        return eventBottom;
+    }
 
     static void
     slotToggleLineWrap(PlainTextEdit& self, const bool isChecked)
@@ -66,33 +91,62 @@ struct PlainTextEdit::Private
 //        if (rect.contains(self.viewport()->rect())) {
 //            slotBlockCountChanged(self, 0);
 //        }
+        if (nullptr != self.m_treeNodeExpanderWidget) {
+            self.m_treeNodeExpanderWidget->update();
+        }
     }
 
     static void
     slotTextChanged(PlainTextEdit& self)
     {
-/*
-        const QTextBlock& textBlock = self.document()->findBlockByLineNumber(12);
+        const QTextBlock& textBlock = self.document()->findBlockByLineNumber(1);
         assert(textBlock.isValid());
         const QString& text = textBlock.text();
-        qDebug() << text.mid(0, 20);
-        const int hadv0 = self.fontMetrics().horizontalAdvance(text, 19);
-        const int hadv1 = self.fontMetrics().horizontalAdvance(text, 20);
-        const double char32width = hadv1 - hadv0;
+        const int index = indexOfFirstNonWhitespace(text);
+        if (0 == index) {
+            int dummy = 1;
+            return;
+        }
         const QRectF& bbg = self.blockBoundingGeometry(textBlock);
-        const QPointF& co = self.contentOffset();
+        QPointF co = self.contentOffset();
+        // Magic: It seems on GNU/Linux/KDE, there is always a magic 4 pixel horizontal indent that does not appear
+        // in 'co' above.  Normally, co.x() is zero.  If so, bump to 4 (magically).
+        if (0.0 == co.x()) {
+            co.rx() = 4;
+        }
         const QRectF& bbgt = bbg.translated(co);
-//        CircleWidget* cw = new CircleWidget{&self};
-        CircleWidget* cw = new CircleWidget{self.viewport()};
-        const double hw = 50.0f;
-        const QRect& r = QRect(//0, 0, hw, hw);
-            bbgt.left() + hadv0 + (char32width / 2.0f) - (hw / 2.0f),
-            bbgt.top() + (bbgt.height() / 2.0f) - (hw / 2.0f),
-            hw, hw);
-        cw->setGeometry(r);
-        cw->show();
-        cw->raise();
-*/
+        const QRect& rect =
+            QRect{
+                self.mapFromGlobal(self.viewport()->mapToGlobal(bbgt.topLeft().toPoint())),
+                bbgt.size().toSize()
+            };
+        const QFontMetrics& fm = self.fontMetrics();
+        const QString& whitespacePrefix = text.left(index - 2);
+        const int xOffset = fm.horizontalAdvance(whitespacePrefix);
+
+        if (nullptr != self.m_treeNodeExpanderWidget) {
+            delete self.m_treeNodeExpanderWidget;
+            self.m_treeNodeExpanderWidget = nullptr;
+        }
+        self.m_treeNodeExpanderWidget = new TreeNodeExpanderWidget{self.font(), &self};
+        self.m_treeNodeExpanderWidget->setFixedSize(QSize{rect.height(), rect.height()});
+        self.m_treeNodeExpanderWidget->slotSetExpanded(true);
+        const int yOffset = (rect.height() - self.m_treeNodeExpanderWidget->height()) / 2;
+        self.m_treeNodeExpanderWidget->move(QPoint{rect.x() + xOffset, rect.y() + yOffset});
+        self.m_treeNodeExpanderWidget->show();  // necessary?
+        self.m_treeNodeExpanderWidget->raise();  // necessary?
+    }
+
+    static int
+    indexOfFirstNonWhitespace(const QString& text)
+    {
+        const int length = text.length();
+        for (int i = 0; i < length; ++i) {
+            if (false == text[i].isSpace()) {
+                return i;
+            }
+        }
+        assert(false);
     }
 };
 
@@ -108,7 +162,8 @@ PlainTextEdit(QWidget* parent /*= nullptr*/)
       kCursorMap{Private::staticGetCursorMap()},
       // Default state: IBeamCursor -> Ctrl & left mouse button not pressed
       m_cursorShape{Qt::CursorShape::IBeamCursor},
-      m_lastMouseOverBlockNumber{-1}
+      m_lastMouseOverBlockNumber{-1},
+      m_treeNodeExpanderWidget{nullptr}
 {
     setMouseTracking(true);
 
@@ -130,9 +185,9 @@ PlainTextEdit(QWidget* parent /*= nullptr*/)
         QObject::connect(pageRightShortcut, &QShortcut::activated, this, &PlainTextEdit::slotScrollPageRight);
     }
 //    QObject::connect(this, &PlainTextEdit::blockCountChanged,
-//        [this](int newBlockCount) { PlainTextEdit::Private::slotBlockCountChanged(*this, newBlockCount); });
+//        [this](int newBlockCount) { Private::slotBlockCountChanged(*this, newBlockCount); });
     QObject::connect(this, &PlainTextEdit::updateRequest,
-        [this](const QRect& rect, int dy) { PlainTextEdit::Private::slotUpdateRequest(*this, rect, dy); });
+        [this](const QRect& rect, int dy) { Private::slotUpdateRequest(*this, rect, dy); });
     QObject::connect(this, &PlainTextEdit::textChanged, [this]() { Private::slotTextChanged(*this); });
 //
 //    Private::slotBlockCountChanged(*this, 0);
@@ -145,81 +200,61 @@ lineNumberAreaWidth()
 const // override
 {
     // +1?  Remember: log10 of 150 is 2, not 3. :)
-    const int digitCount = 1 + std::log10(blockCount());
-    // +2?  Leading and trailing space that is one digit wide
-    const int x = (2 + digitCount) * fontMetrics().horizontalAdvance(QLatin1Char{'0'});
+    const qreal digitCount = 1 + std::log10(blockCount());
+    const QFontMetricsF& fontMetricsF = QFontMetricsF(font());
+    // +1?  Trailing space that is one digit wide.
+    const qreal y = (1.0 + digitCount) * fontMetricsF.horizontalAdvance(QLatin1Char{'9'});
+    // +0.5?  Truncate correctly: 1.1 -> 1, 1.4 -> 1, 1.5 -> 2, 1.6 -> 2
+    const int x = (0.5 + y);
     return x;
 }
 
 // public
 void
 PlainTextEdit::
-lineNumberAreaPaintEvent(QPaintEvent* event) // override
+lineNumberAreaPaintEvent(QPaintEvent* event)  // override
 {
     QPainter painter{m_lineNumberAreaWidget};
-    painter.setFont(font());
-    const QPoint& topLeftG2 = m_lineNumberAreaWidget->mapToGlobal(m_lineNumberAreaWidget->pos());
     const QPalette& palette = this->palette();
-    const QColor& bgColor = palette.color(QPalette::Background);
+    const QColor& bgColor = palette.color(QPalette::ColorRole::Window);
     painter.fillRect(event->rect(), bgColor);
+    // TODO: Replace with a QPalette color role
     painter.setPen(QColor{127, 129, 126});
+    painter.setFont(font());
     QTextBlock textBlock = firstVisibleBlock();
     int blockIndex = textBlock.blockNumber();
-    const QRectF& bbg = blockBoundingGeometry(textBlock);
-    const QPoint& topLeftG = mapToGlobal(bbg.topLeft().toPoint());
-    const QPointF& co = contentOffset();
-    const QPoint& coG = mapToGlobal(co.toPoint());
-    const QPoint& co2 = m_lineNumberAreaWidget->mapFromGlobal(coG);
-//    LAST: TURN OFF X WINDOWS SCALING (130% -> 100% AND TRY AGAIN!)
-    const QRectF& bbgt = bbg.translated(co);
-    const QRectF& bbgt2 = bbg.translated(co2);
-    int top = qRound(bbgt.top());
-    const QRectF& z = this->document()->documentLayout()->blockBoundingRect(textBlock);
-//    const QRectF& z = this->document()->documentLayout()->frameBoundingRect(textBlock);
-    const QRectF& bbr = blockBoundingRect(textBlock);
-    int bottom = top + qRound(bbr.height());  // not 'bottom' but 'next top!'
-//    int bottom = top + qRound(bbg.height());
-    const int oneDigitWidth = fontMetrics().horizontalAdvance(QLatin1Char{'0'});
-    const int eventBottom = PlainTextEdit::Private::getAdjEventBottom(*this, event);
 
-    while (textBlock.isValid() && top <= eventBottom) {
-//        qDebug() << "block height: " << (bottom - top);
-        if (textBlock.isVisible() && bottom >= event->rect().top() && bottom <= eventBottom) {
-            QString lineNumber = QString::number(1 + blockIndex);
-            // Vertically center the line number.  In theory, fontMetrics().height() should *always* be less than or
-            // equal to (bottom - top), but be safe and use std::max().
-            const int fontHeight = painter.fontMetrics().height();
-            const int topOffset = std::max(0, (bottom - top) - fontHeight) / 2;
-            if (0 != topOffset) {
-//                qDebug() << "topOffset: " << topOffset;
-            }
-            // -oneDigitWidth?  Left one digit width in right margin
-            painter.drawText(0, topOffset + top, m_lineNumberAreaWidget->width() - oneDigitWidth, fontHeight,
-                             Qt::AlignmentFlag::AlignRight, lineNumber);
+    const QRectF& bbg = QPlainTextEdit::blockBoundingGeometry(textBlock);
+    const QPointF& co = contentOffset();
+    const QRectF& bbgt = bbg.translated(co);
+    qreal top = viewport()->y() + bbgt.top();
+    qreal height = bbg.height();
+    qreal nextTop = top + height;
+    const QFontMetricsF& fontMetricsF = QFontMetricsF(font());
+    const qreal fontHeight = fontMetricsF.height();
+    const qreal width = m_lineNumberAreaWidget->width();
+    const qreal charWidth = fontMetricsF.horizontalAdvance(QLatin1Char{'9'});
+    Private::setClipRect(*this, event, &painter);
+
+    while (textBlock.isValid() && top <= event->rect().bottom()) {
+
+        if (textBlock.isVisible()
+            // This condition makes no sense to me!  How can it ever be false?
+            && nextTop >= event->rect().top()/*
+            && nextTop <= adjEventBottom*/) {
+
+            const QString& number = QString::number(blockIndex + 1);
+            const double topOffset = (height - fontHeight) / 2.0;
+            painter.drawText(QRectF{0, top + topOffset, width - charWidth, fontHeight},
+                Qt::AlignmentFlag::AlignRight, number);
         }
         textBlock = textBlock.next();
-        top = bottom;
-        const QRectF& bbr2 = blockBoundingRect(textBlock);
-        bottom = top + qRound(bbr2.height());
+        top = nextTop;
+        const QRectF& bbr = blockBoundingRect(textBlock);
+        height = bbr.height();
+        nextTop = top + height;
         ++blockIndex;
     }
-}
-
-int
-PlainTextEdit::Private::
-getAdjEventBottom(PlainTextEdit& self, QPaintEvent* event)
-{
-    int eventBottom = event->rect().bottom();
-    if (self.horizontalScrollBar()->isVisible()) {
-        const QPoint& hbarPosG = self.horizontalScrollBar()->mapToGlobal(self.horizontalScrollBar()->pos());
-        // Important: Use m_lineNumberAreaWidget, not this, b/c event is relative to m_lineNumberAreaWidget.
-        const QPoint& hbarPosG2 = self.m_lineNumberAreaWidget->mapFromGlobal(hbarPosG);
-        if (eventBottom >= hbarPosG2.y()) {
-            // Remember: hbarPosG2.y() is the *first* vertical pixel of hbar.  We want to exclude this vertical pixel.
-            eventBottom = hbarPosG2.y() - 1;
-        }
-    }
-    return eventBottom;
 }
 
 // public slot
@@ -261,7 +296,7 @@ slotScrollPageRight()
 // protected
 void
 PlainTextEdit::
-contextMenuEvent(QContextMenuEvent* e) // override
+contextMenuEvent(QContextMenuEvent* e)  // override
 {
     // Ref: https://doc.qt.io/qt-5/qplaintextedit.html#contextMenuEvent
     // Ref: https://stackoverflow.com/a/43820412/257299
@@ -271,7 +306,7 @@ contextMenuEvent(QContextMenuEvent* e) // override
     action->setCheckable(true);
     action->setChecked(Base::LineWrapMode::WidgetWidth == lineWrapMode());
     QObject::connect(action, &QAction::toggled,
-        [this](bool isChecked) { PlainTextEdit::Private::slotToggleLineWrap(*this, isChecked); });
+        [this](bool isChecked) { Private::slotToggleLineWrap(*this, isChecked); });
     // @Blocking
     menu->exec(e->globalPos());
     delete menu;
@@ -280,7 +315,7 @@ contextMenuEvent(QContextMenuEvent* e) // override
 // protected
 void
 PlainTextEdit::
-keyPressEvent(QKeyEvent* e) // override
+keyPressEvent(QKeyEvent* e)  // override
 {
     // If we find a platform where e->modifiers() cannot be trusted, see: QGuiApplication::keyboardModifiers()
     if (Qt::KeyboardModifier::ControlModifier == e->modifiers() && Qt::Key::Key_Control == e->key()) {
@@ -296,7 +331,7 @@ keyPressEvent(QKeyEvent* e) // override
 // protected
 void
 PlainTextEdit::
-keyReleaseEvent(QKeyEvent* e) // override
+keyReleaseEvent(QKeyEvent* e)  // override
 {
     if (Qt::Key::Key_Control == e->key()) {
         // qDebug() << QString("key-release: modifiers: 0x%1, key: 0x%2").arg(e->modifiers(), 0, 16).arg(e->key(), 0, 16);
@@ -308,7 +343,7 @@ keyReleaseEvent(QKeyEvent* e) // override
 // protected
 void
 PlainTextEdit::
-mousePressEvent(QMouseEvent* event) // override
+mousePressEvent(QMouseEvent* event)  // override
 {
     if (Qt::KeyboardModifier::ControlModifier == event->modifiers()
         // Careful: Singular button() is the button that caused the event.  Plural buttons() will include
@@ -324,7 +359,7 @@ mousePressEvent(QMouseEvent* event) // override
 // protected
 void
 PlainTextEdit::
-mouseReleaseEvent(QMouseEvent* event) // override
+mouseReleaseEvent(QMouseEvent* event)  // override
 {
     if (Qt::KeyboardModifier::ControlModifier == event->modifiers()
         // Careful: Singular button() is the button that caused the event.  Plural buttons() will never include
@@ -339,7 +374,7 @@ mouseReleaseEvent(QMouseEvent* event) // override
 // protected
 void
 PlainTextEdit::
-mouseMoveEvent(QMouseEvent* event) // override
+mouseMoveEvent(QMouseEvent* event)  // override
 {
     {
         const QPoint& pos = event->pos();
@@ -445,7 +480,7 @@ mouseMoveEvent(QMouseEvent* event) // override
 // protected
 void
 PlainTextEdit::
-focusOutEvent(QFocusEvent* e) // override
+focusOutEvent(QFocusEvent* e)  // override
 {
     // Triggered when: Ctrl pressed, then Ctrl+F pressed -> focus transfered to find text lineedit.
     Private::setCursor(*this, Qt::CursorShape::IBeamCursor);
@@ -455,7 +490,7 @@ focusOutEvent(QFocusEvent* e) // override
 // protected
 void
 PlainTextEdit::
-leaveEvent(QEvent* event) // override
+leaveEvent(QEvent* event)  // override
 {
     QList<QTextEdit::ExtraSelection> extraList = extraSelections();
     extraList.clear();
@@ -466,7 +501,7 @@ leaveEvent(QEvent* event) // override
 // protected
 void
 PlainTextEdit::
-resizeEvent(QResizeEvent* e) // override
+resizeEvent(QResizeEvent* e)  // override
 {
     QPlainTextEdit::resizeEvent(e);
 

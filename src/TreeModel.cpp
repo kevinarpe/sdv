@@ -87,7 +87,7 @@ index(const int rowIndex,
       const int columnIndex,
       const QModelIndex& parent) const // override
 {
-    TreeItem* const item = TreeModel::Private::getItem(*this, rowIndex, columnIndex, parent);
+    TreeItem* const item = Private::getItem(*this, rowIndex, columnIndex, parent);
     if (nullptr == item) {
         return QModelIndex{};
     }

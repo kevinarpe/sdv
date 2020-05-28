@@ -60,6 +60,12 @@ add_executable(sdv
         src/TreeItem.cpp
         src/TreeItem.h
         src/TextFormat.h
-        src/Bit.h)
+        src/Bit.h
+        src/GoToLineEdit.cpp
+        src/GoToLineEdit.h
+        src/SmoothShowHideWidget.cpp
+        src/SmoothShowHideWidget.h
+        src/TreeNodeExpanderWidget.cpp
+        src/TreeNodeExpanderWidget.h)
 
 target_link_libraries(sdv Qt5::Widgets)
