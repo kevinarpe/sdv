@@ -24,8 +24,8 @@ class TextWidget : public QWidget
 
 public:
     static const QFont kDefaultFont; // {"Deja Vu Sans Mono", 12}
-    using Base = QWidget;
 
+    using Base = QWidget;
     explicit TextWidget(QWidget* parent = nullptr,
                         Qt::WindowFlags flags = Qt::WindowFlags());
     ~TextWidget() override = default;

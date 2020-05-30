@@ -4,6 +4,7 @@
 
 # Important library source code for IntelliJ browsing
 lib/
+OLD_SRC/
 
 # IntelliJ IDEA / CLion
 .idea/

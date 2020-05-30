@@ -85,7 +85,7 @@ QModelIndex
 TreeModel::
 index(const int rowIndex,
       const int columnIndex,
-      const QModelIndex& parent) const // override
+      const QModelIndex& parent) const  // override
 {
     TreeItem* const item = Private::getItem(*this, rowIndex, columnIndex, parent);
     if (nullptr == item) {
@@ -100,7 +100,7 @@ index(const int rowIndex,
 // public
 QModelIndex
 TreeModel::
-parent(const QModelIndex& child) const // override
+parent(const QModelIndex& child) const  // override
 {
     if ( ! child.isValid()) {
         return QModelIndex();
@@ -120,7 +120,7 @@ parent(const QModelIndex& child) const // override
 // public
 int
 TreeModel::
-rowCount(const QModelIndex& parent) const // override
+rowCount(const QModelIndex& parent) const  // override
 {
     if (parent.column() > 0) {
         qDebug() << "parent.column(): " << parent.column();
@@ -143,7 +143,7 @@ rowCount(const QModelIndex& parent) const // override
 // public
 QVariant
 TreeModel::
-data(const QModelIndex& index, const int role) const // override
+data(const QModelIndex& index, const int role) const  // override
 {
 //    if ( ! index.isValid()) {
 //        return QVariant();

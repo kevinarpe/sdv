@@ -16,10 +16,13 @@ template<>
 struct hash<QString>
 {
     std::size_t
-    operator()(const QString& s) const noexcept {
+    operator()(const QString& s)
+    const noexcept
+    {
         return static_cast<std::size_t>(qHash(s));
     }
 };
-}
+
+}  // namespace std
 
 #endif //SDV_QTHASH_H

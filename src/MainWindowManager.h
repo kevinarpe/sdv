@@ -17,6 +17,8 @@ class MainWindow;
 class MainWindowManager {
 
 public:
+    explicit MainWindowManager() = default;
+
     MainWindowManagerToken
     add(MainWindow& mainWindow);
 

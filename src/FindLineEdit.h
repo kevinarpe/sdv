@@ -17,6 +17,7 @@ public:
     enum class KeySequence { Escape, Enter, ShiftEnter, PageUp, PageDown, CtrlHome, CtrlEnd, AltPageUp, AltPageDown };
     using Base = QLineEdit;
     explicit FindLineEdit(QWidget* parent = nullptr) : Base(parent) {}
+    ~FindLineEdit() override = default;
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;

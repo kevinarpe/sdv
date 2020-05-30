@@ -11,7 +11,7 @@ namespace SDV {
 QSize
 LineNumberAreaWidget::
 sizeHint()
-const // override
+const  // override
 {
     return QSize{m_widget.lineNumberAreaWidth(), 0};
 }

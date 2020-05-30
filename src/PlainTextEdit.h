@@ -7,10 +7,9 @@
 
 #include <memory>
 #include <QPlainTextEdit>
-#include <QScrollBar>
-#include <QTextCursor>
 #include <QTextBlock>
 #include "IWidgetWithLineNumberArea.h"
+class QLabel;
 
 namespace SDV {
 
@@ -24,11 +23,17 @@ class PlainTextEdit : public QPlainTextEdit, public IWidgetWithLineNumberArea
 public:
     using Base = QPlainTextEdit;
     explicit PlainTextEdit(QWidget* parent = nullptr);
+    ~PlainTextEdit() override = default;
+
+    using QPlainTextEdit::blockBoundingGeometry;
+    using QPlainTextEdit::contentOffset;
+
     int lineNumberAreaWidth() const override;
     void lineNumberAreaPaintEvent(QPaintEvent* event) override;
     LineNumberAreaWidget* lineNumberAreaWidget() const { return m_lineNumberAreaWidget; }
-    using QPlainTextEdit::blockBoundingGeometry;
-    using QPlainTextEdit::contentOffset;
+    QTextBlock tryGetFirstVisibleBlock() const;
+    QTextBlock tryGetLastFullyVisibleBlock() const;
+    QTextBlock tryGetLastVisibleBlock() const;
 
 public slots:
     void slotScrollTopLeft();
@@ -46,15 +51,17 @@ protected:
     void focusOutEvent(QFocusEvent* e) override;
     void leaveEvent(QEvent* event) override;
     void resizeEvent(QResizeEvent* e) override;
+    bool event(QEvent* event) override;
 
 private:
     struct Private;
     const std::unordered_map<Qt::CursorShape, QCursor>& kCursorMap;
     Qt::CursorShape m_cursorShape;
     QPoint m_lastMouseMovePoint;
-    int m_lastMouseOverBlockNumber;
+    int m_lastMouseOverBlockIndex;
     LineNumberAreaWidget* m_lineNumberAreaWidget;
     TreeNodeExpanderWidget* m_treeNodeExpanderWidget;
+    QLabel* m_label;
 };
 
 }  // namespace SDV

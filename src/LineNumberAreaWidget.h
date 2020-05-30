@@ -15,10 +15,11 @@ class IWidgetWithLineNumberArea;
 class LineNumberAreaWidget : public QWidget
 {
 public:
-    LineNumberAreaWidget(IWidgetWithLineNumberArea& widget, QWidget* parent = nullptr)
-        : QWidget{parent}, m_widget{widget}
+    using Base = QWidget;
+    explicit LineNumberAreaWidget(IWidgetWithLineNumberArea& widget, QWidget* parent = nullptr)
+        : Base{parent}, m_widget{widget}
     {}
-
+    ~LineNumberAreaWidget() override = default;
     QSize sizeHint() const override;
 
 protected:

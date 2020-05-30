@@ -15,12 +15,14 @@ class StatusBar : public QStatusBar
     Q_OBJECT
 
 public:
+    using Base = QStatusBar;
     explicit StatusBar(QWidget* parent = nullptr);
+    ~StatusBar() override = default;
+
     QLabel* sharedLabel() const { return m_sharedLabel; }
     QLabel* textViewLabel() const { return m_textViewLabel; }
 
 private:
-    using Base = QStatusBar;
     QLabel* m_sharedLabel;
     QLabel* m_textViewLabel;
 };

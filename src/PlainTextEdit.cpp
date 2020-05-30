@@ -8,10 +8,14 @@
 #include <QDebug>
 #include <QPainter>
 #include <QShortcut>
+#include <QLabel>
+#include <QScrollBar>
 #include "LineNumberAreaWidget.h"
 #include "TreeNodeExpanderWidget.h"
 
 namespace SDV {
+
+static const QPoint INVALID_POINT{-1, -1};
 
 struct PlainTextEdit::Private
 {
@@ -71,13 +75,6 @@ struct PlainTextEdit::Private
     {
         self.setLineWrapMode(isChecked ? Base::LineWrapMode::WidgetWidth : Base::LineWrapMode::NoWrap);
     }
-//
-//    static void
-//    slotBlockCountChanged(PlainTextEdit& self, int /*newBlockCount*/)
-//    {
-////        setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
-//        int dummy = 1;
-//    }
 
     static void
     slotUpdateRequest(PlainTextEdit& self, const QRect &rect, const int dy)
@@ -88,18 +85,19 @@ struct PlainTextEdit::Private
         else {
             self.m_lineNumberAreaWidget->update(0, rect.y(), self.m_lineNumberAreaWidget->width(), rect.height());
         }
-//        if (rect.contains(self.viewport()->rect())) {
-//            slotBlockCountChanged(self, 0);
-//        }
-        if (nullptr != self.m_treeNodeExpanderWidget) {
-            self.m_treeNodeExpanderWidget->update();
-        }
     }
 
     static void
     slotTextChanged(PlainTextEdit& self)
     {
-        const QTextBlock& textBlock = self.document()->findBlockByLineNumber(1);
+        const qreal textBlockMinHeight = getTextBlockMinHeight(self);
+        if (0 == textBlockMinHeight) {
+            int dummy = 1;
+            return;
+        }
+        // Dummy value to test if we can correctly place two floating widgets.
+        const int blockIndex = 1;
+        const QTextBlock& textBlock = self.document()->findBlockByLineNumber(blockIndex);
         assert(textBlock.isValid());
         const QString& text = textBlock.text();
         const int index = indexOfFirstNonWhitespace(text);
@@ -108,45 +106,224 @@ struct PlainTextEdit::Private
             return;
         }
         const QRectF& bbg = self.blockBoundingGeometry(textBlock);
-        QPointF co = self.contentOffset();
-        // Magic: It seems on GNU/Linux/KDE, there is always a magic 4 pixel horizontal indent that does not appear
-        // in 'co' above.  Normally, co.x() is zero.  If so, bump to 4 (magically).
-        if (0.0 == co.x()) {
-            co.rx() = 4;
-        }
+        const QPointF& co = self.contentOffset();
         const QRectF& bbgt = bbg.translated(co);
-        const QRect& rect =
-            QRect{
-                self.mapFromGlobal(self.viewport()->mapToGlobal(bbgt.topLeft().toPoint())),
-                bbgt.size().toSize()
-            };
         const QFontMetrics& fm = self.fontMetrics();
         const QString& whitespacePrefix = text.left(index - 2);
-        const int xOffset = fm.horizontalAdvance(whitespacePrefix);
+        const qreal xOffset = fm.horizontalAdvance(whitespacePrefix);
 
         if (nullptr != self.m_treeNodeExpanderWidget) {
             delete self.m_treeNodeExpanderWidget;
             self.m_treeNodeExpanderWidget = nullptr;
         }
-        self.m_treeNodeExpanderWidget = new TreeNodeExpanderWidget{self.font(), &self};
-        self.m_treeNodeExpanderWidget->setFixedSize(QSize{rect.height(), rect.height()});
+        // Important: Parent is viewport, not self.  Why?  We are using absolute positioning for widgets that float
+        // above the viewport, not self.  There is a subtle difference in coordinate systems.
+        self.m_treeNodeExpanderWidget = new TreeNodeExpanderWidget{self.viewport()};
+        self.m_treeNodeExpanderWidget->setFixedSize(QSizeF{textBlockMinHeight, textBlockMinHeight}.toSize());
         self.m_treeNodeExpanderWidget->slotSetExpanded(true);
-        const int yOffset = (rect.height() - self.m_treeNodeExpanderWidget->height()) / 2;
-        self.m_treeNodeExpanderWidget->move(QPoint{rect.x() + xOffset, rect.y() + yOffset});
-        self.m_treeNodeExpanderWidget->show();  // necessary?
-        self.m_treeNodeExpanderWidget->raise();  // necessary?
+        const qreal yOffset = (bbgt.height() - self.m_treeNodeExpanderWidget->height()) / 2;
+        self.m_treeNodeExpanderWidget->move(QPointF{bbgt.x() + xOffset, bbgt.y() + yOffset}.toPoint());
+
+        self.m_label = new QLabel{"// size:100", self.viewport()};
+        // Disable bizarre default behaviour where QLabel drag (mouse press+move) will move the whole window.
+        // Ref: https://stackoverflow.com/a/18981898/257299
+        self.m_label->setAttribute(Qt::WidgetAttribute::WA_TransparentForMouseEvents);
+        self.m_label->setFont(self.font());
+        QPalette palette = self.m_label->palette();
+        palette.setColor(self.m_label->foregroundRole(), Qt::GlobalColor::darkGray);
+        self.m_label->setPalette(palette);
+        const qreal xOffset2 = fm.horizontalAdvance(text + "  ");
+        self.m_label->move(QPointF{bbgt.x() + xOffset2, bbgt.y()}.toPoint());
+    }
+
+    static void
+    slotScrollBarValueChanged(PlainTextEdit& self, const Qt::Orientation ori, const int value)
+    {
+        const QTextBlock& tb0 = self.tryGetFirstVisibleBlock();
+        const QTextBlock& tb2 = self.tryGetLastVisibleBlock();
+        const int blockIndex = 1;
+        if (blockIndex < tb0.blockNumber() || blockIndex > tb2.blockNumber()) {
+            self.m_treeNodeExpanderWidget->hide();
+            self.m_label->hide();
+            return;
+        }
+        const QTextBlock& textBlock = self.document()->findBlockByLineNumber(blockIndex);
+        assert(textBlock.isValid());
+        const QString& text = textBlock.text();
+        const int index = indexOfFirstNonWhitespace(text);
+        if (0 == index) {
+            int dummy = 1;
+            return;
+        }
+        const QRectF& bbg = self.blockBoundingGeometry(textBlock);
+        const QPointF& co = self.contentOffset();
+        const QRectF& bbgt = bbg.translated(co);
+        const QFontMetricsF& fm = QFontMetricsF{self.font()};
+        const QString& whitespacePrefix = text.left(index - 2);
+        const qreal xOffset = fm.horizontalAdvance(whitespacePrefix);
+        const qreal yOffset = (bbgt.height() - self.m_treeNodeExpanderWidget->height()) / 2;
+        self.m_treeNodeExpanderWidget->move(QPointF{bbgt.x() + xOffset, bbgt.y() + yOffset}.toPoint());
+        self.m_treeNodeExpanderWidget->show();
+
+        const qreal xOffset2 = fm.horizontalAdvance(text + "  ");
+        self.m_label->move(QPointF{bbgt.x() + xOffset2, bbgt.y()}.toPoint());
+        self.m_label->show();
+    }
+
+    static qreal
+    getTextBlockMinHeight(const PlainTextEdit& self)
+    {
+        qreal minHeight = std::numeric_limits<qreal>::max();
+        for (QTextBlock textBlock = self.document()->firstBlock(); textBlock.isValid(); textBlock = textBlock.next())
+        {
+            if (textBlock.isVisible()) {
+                const QRectF& r = self.blockBoundingRect(textBlock);
+                minHeight = qMin(minHeight, r.height());
+            }
+        }
+        if (std::numeric_limits<qreal>::max() == minHeight) {
+            return 0;
+        }
+        else {
+            return minHeight;
+        }
     }
 
     static int
     indexOfFirstNonWhitespace(const QString& text)
     {
         const int length = text.length();
-        for (int i = 0; i < length; ++i) {
+        for (int i = 0; i < length; ++i)
+        {
             if (false == text[i].isSpace()) {
                 return i;
             }
         }
         assert(false);
+    }
+
+    static void
+    hoverMoveEvent(PlainTextEdit& self, QHoverEvent* event)
+    {
+        mouseOverTextBlock(self, event->pos());
+        drag(self, event->pos());
+    }
+
+    static void
+    mouseOverTextBlock(PlainTextEdit& self, const QPoint& mousePos)
+    {
+        // This *still* looks a little bit weird.  Text colour changes on mouse-over.  Bizarre.
+        const QTextCursor& textCursor = self.cursorForPosition(mousePos);
+        const QTextBlock& textBlock = textCursor.block();
+        const int blockIndex = textBlock.blockNumber();
+//        const int firstLineNumber = textBlock.firstLineNumber();
+//        const int lineCount = textBlock.lineCount();
+        if (blockIndex == self.m_lastMouseOverBlockIndex) {
+            return;
+        }
+//            qDebug() << QString("mouse-over.blockIndex(): %1 -> %2").arg(m_lastMouseOverBlockIndex).arg(blockIndex);
+//            if (m_lastMouseOverBlockIndex >= 0) {
+//                const QTextBlock& lastTextBlock = document()->findBlockByNumber(m_lastMouseOverBlockIndex);
+//                const int lastFirstLineNumber = lastTextBlock.firstLineNumber();
+//                const int lastLineCount = lastTextBlock.lineCount();
+//                QTextLayout* lastTextLayout = lastTextBlock.layout();
+//                QVector<QTextLayout::FormatRange> lastFormatVec = lastTextLayout->formats();
+//                assert(lastFormatVec.size() > 0);
+//                lastFormatVec.removeFirst();
+//                lastTextLayout->setFormats(lastFormatVec);
+//                document()->markContentsDirty(lastTextBlock.position(), lastTextBlock.length());
+//            }
+        self.m_lastMouseOverBlockIndex = blockIndex;
+        QTextLayout* textLayout = textBlock.layout();
+        QVector<QTextLayout::FormatRange> formatVec = textLayout->formats();
+//            QTextLayout::FormatRange formatRange{};
+//            formatRange.start = 0;
+////            formatRange.length = textBlock.length();
+//            formatRange.length = std::numeric_limits<int>::max();
+//            formatRange.format.setProperty(QTextFormat::Property::FullWidthSelection, true);
+//            formatRange.format.setBackground(QBrush{QColor{192, 230, 255}});
+//            // Intentional: Always paint mouse-over background color *first*, then allow other formats to overwrite.
+//            formatVec.insert(0, std::move(formatRange));
+//            textLayout->setFormats(formatVec);
+//            document()->markContentsDirty(textBlock.position(), textBlock.length());
+
+        QTextEdit::ExtraSelection extra{};
+        extra.cursor = textCursor;
+        // Ref: https://lists.qt-project.org/pipermail/qt-interest-old/2009-August/011566.html
+        extra.format.setProperty(QTextFormat::Property::FullWidthSelection, true);
+//            extra.format.setBackground(QBrush{QColor{192, 230, 255}});
+//            extra.format.setBackground(QBrush{QColor{192, 230, 255}});
+        // Ref: https://www.colorhexa.com/007fff
+        extra.format.setBackground(QBrush{QColor{216, 235, 255}});
+//            extra.format.setBackground(QBrush{QColor{235, 245, 255}});
+        QList<QTextEdit::ExtraSelection> extraList = self.extraSelections();
+        extraList.clear();
+        extraList.append(extra);
+        // This is RANDOM.  Notice that I only add a *single* dummy "extra" selection.  For unknown reasons, this
+        // causes the full-width (mouse-over) background to paint first, not last.  <shruggy>!
+        // Ref: https://stackoverflow.com/questions/28257022/qsyntaxhighlighter-text-selection-overrides-style
+        if (formatVec.size() > 0)
+        {
+            const QTextLayout::FormatRange& fr = formatVec[0];
+            QTextCursor tc{self.document()};
+            tc.setPosition(textBlock.position(), QTextCursor::MoveMode::MoveAnchor);
+            tc.setPosition(textBlock.position() + textBlock.length(), QTextCursor::MoveMode::KeepAnchor);
+            QTextEdit::ExtraSelection extra0{};
+            extra0.cursor = tc;
+            extra0.format = fr.format;
+            extraList.append(extra0);
+        }
+        self.setExtraSelections(extraList);
+    }
+
+    static void
+    drag(PlainTextEdit& self, const QPoint& mousePos)
+    {
+        if (false == isDragging(self)) {
+            return;
+        }
+        if (Qt::CursorShape::IBeamCursor == self.m_cursorShape) {
+            return;
+        }
+        // First visible line
+        const QTextCursor& textCursor0 = self.cursorForPosition(QPoint{0, 0});
+        const QTextBlock& textBlock0 = textCursor0.block();
+        const QString& text0 = textBlock0.text();
+        // Ex: 18, 20, or 24
+        // In practice, due to slight line height variations due to latin and non-latin (CJK) chars,
+        // this line height is not uniform.  Usually, CJK chars are slightly tallers than latin chars.
+        const qreal height0 = textBlock0.layout()->boundingRect().height();
+        // Coordinate system origin (0, 0) is top left.
+        const int dXPixel = self.m_lastMouseMovePoint.x() - mousePos.x();
+        const int dYPixel = self.m_lastMouseMovePoint.y() - mousePos.y();
+        // Intentional: Integer truncate: 17/18 -> 0!
+        const int dLine = dYPixel / ((int) height0);
+        // For QPlainTextEdit, horizonal scrolling is smooth -- per pixel.  Thus, horizonal bar range is pixels.
+        // However, vertical scrolling is not smooth -- per line.  Thus, vertical bar range is lines.
+        // If first visible line height is 18 pixels
+        const int hbarPixel = self.horizontalScrollBar()->value();
+        const int vbarLine = self.verticalScrollBar()->value();
+//        qDebug() << QString("x[%1,%2]: %3 + %4 = %5, vbarLine[%6,%7]: %8 + %9 = %10, dy2: %11")
+//            .arg(horizontalScrollBar()->minimum()).arg(horizontalScrollBar()->maximum())
+//            .arg(hbarPixel).arg(dXPixel).arg(hbarPixel + dXPixel)
+//            .arg(verticalScrollBar()->minimum()).arg(verticalScrollBar()->maximum())
+//            .arg(vbarLine).arg(dYPixel).arg(vbarLine + dYPixel)
+//            .arg(dLine);
+        self.horizontalScrollBar()->setValue(hbarPixel + dXPixel);
+        // Always update horizontal mouse move point, as this is pixel-based, not line-based.
+        self.m_lastMouseMovePoint.rx() -= dXPixel;
+        // Only update vertical mouse move point if at least one line of vertical distance moved.
+        if (0 != dLine) {
+            self.verticalScrollBar()->setValue(vbarLine + dLine);
+            self.m_lastMouseMovePoint.ry() -= dYPixel;
+        }
+    }
+
+    static bool
+    isDragging(const PlainTextEdit& self)
+    {
+        const bool x = (INVALID_POINT != self.m_lastMouseMovePoint);
+        return x;
     }
 };
 
@@ -162,10 +339,13 @@ PlainTextEdit(QWidget* parent /*= nullptr*/)
       kCursorMap{Private::staticGetCursorMap()},
       // Default state: IBeamCursor -> Ctrl & left mouse button not pressed
       m_cursorShape{Qt::CursorShape::IBeamCursor},
-      m_lastMouseOverBlockNumber{-1},
-      m_treeNodeExpanderWidget{nullptr}
+      m_lastMouseMovePoint{INVALID_POINT},
+      m_lastMouseOverBlockIndex{-1},
+      m_treeNodeExpanderWidget{nullptr},
+      m_label{nullptr}
 {
-    setMouseTracking(true);
+    // Enable QEvent::Type::HoverMove
+    setAttribute(Qt::WidgetAttribute::WA_Hover, true);
 
     m_lineNumberAreaWidget = new LineNumberAreaWidget{*this};
     {
@@ -189,6 +369,18 @@ PlainTextEdit(QWidget* parent /*= nullptr*/)
     QObject::connect(this, &PlainTextEdit::updateRequest,
         [this](const QRect& rect, int dy) { Private::slotUpdateRequest(*this, rect, dy); });
     QObject::connect(this, &PlainTextEdit::textChanged, [this]() { Private::slotTextChanged(*this); });
+    // Move with arrows or mouse drag of scrollbar will trigger signal valueChanged.
+    // Signal sliderMoved will only trigger for mouse drag.
+    if (nullptr != horizontalScrollBar())
+    {
+        QObject::connect(horizontalScrollBar(), &QScrollBar::valueChanged,
+            [this](const int value) { Private::slotScrollBarValueChanged(*this, Qt::Orientation::Horizontal, value); });
+    }
+    if (nullptr != verticalScrollBar())
+    {
+        QObject::connect(verticalScrollBar(), &QScrollBar::valueChanged,
+            [this](const int value) { Private::slotScrollBarValueChanged(*this, Qt::Orientation::Vertical, value); });
+    }
 //
 //    Private::slotBlockCountChanged(*this, 0);
 }
@@ -197,7 +389,7 @@ PlainTextEdit(QWidget* parent /*= nullptr*/)
 int
 PlainTextEdit::
 lineNumberAreaWidth()
-const // override
+const  // override
 {
     // +1?  Remember: log10 of 150 is 2, not 3. :)
     const qreal digitCount = 1 + std::log10(blockCount());
@@ -224,7 +416,7 @@ lineNumberAreaPaintEvent(QPaintEvent* event)  // override
     QTextBlock textBlock = firstVisibleBlock();
     int blockIndex = textBlock.blockNumber();
 
-    const QRectF& bbg = QPlainTextEdit::blockBoundingGeometry(textBlock);
+    const QRectF& bbg = blockBoundingGeometry(textBlock);
     const QPointF& co = contentOffset();
     const QRectF& bbgt = bbg.translated(co);
     qreal top = viewport()->y() + bbgt.top();
@@ -254,6 +446,88 @@ lineNumberAreaPaintEvent(QPaintEvent* event)  // override
         height = bbr.height();
         nextTop = top + height;
         ++blockIndex;
+    }
+}
+
+/**
+ * @return result may be invalid when block count is zero
+ *
+ * @see QTextBlock::isValid()
+ */
+// public
+QTextBlock
+PlainTextEdit::
+tryGetFirstVisibleBlock()
+const
+{
+    const QTextCursor& tc = cursorForPosition(QPoint{0, 0});
+    const QTextBlock& x = tc.block();
+    return x;
+}
+
+/**
+ * @return result may be invalid when block count is zero
+ *         <br>If the result is valid, it is not guaranteed to be fully visible.  It may be clipped.
+ *
+ * @see QTextBlock#isValid()
+ * @see #tryGetLastFullyVisibleBlock()
+ */
+// public
+QTextBlock
+PlainTextEdit::
+tryGetLastVisibleBlock()
+const
+{
+    const int blockCount = this->blockCount();
+    if (0 == blockCount) {
+        const QTextBlock& x = document()->firstBlock();
+        return x;
+    }
+    const QPoint point{0, viewport()->height() - 1};
+    const QTextCursor& tc = cursorForPosition(point);
+    const QTextBlock& tb = tc.block();
+    if (tb.isValid()) {
+        return tb;
+    }
+    else {
+        const QTextBlock& x = document()->findBlockByNumber(blockCount - 1);
+        return x;
+    }
+}
+
+/**
+ * @return result may be invalid when block count is zero
+ *         <br>If the result is valid, it is guaranteed to be fully visible.  It is never clipped.
+ *
+ * @see QTextBlock#isValid()
+ * @see #tryGetLastVisibleBlock()
+ */
+// public
+QTextBlock
+PlainTextEdit::
+tryGetLastFullyVisibleBlock()
+const
+{
+    QTextBlock tb = tryGetLastVisibleBlock();
+    if (false == tb.isValid()) {
+        return tb;
+    }
+    const QRectF& bbg = blockBoundingGeometry(tb);
+    // Necessary?  Unsure.
+    const QPointF& co = contentOffset();
+    if (0 != co.x() && 0 != co.y()) {
+        // @DebugBreakpoint
+        int dummy = 1;
+    }
+    const QRectF& bbgt = bbg.translated(co);
+    const qreal b1 = bbgt.bottom();
+    const int b2 = viewport()->height();
+    if (b1 <= b2) {
+        return tb;
+    }
+    else {
+        const QTextBlock& x = tb.previous();
+        return x;
     }
 }
 
@@ -367,6 +641,7 @@ mouseReleaseEvent(QMouseEvent* event)  // override
         && Qt::MouseButton::LeftButton == event->button()) {
 
         Private::setCursor(*this, Qt::CursorShape::OpenHandCursor);
+        m_lastMouseMovePoint = INVALID_POINT;
     }
     Base::mouseReleaseEvent(event);
 }
@@ -376,104 +651,11 @@ void
 PlainTextEdit::
 mouseMoveEvent(QMouseEvent* event)  // override
 {
-    {
-        const QPoint& pos = event->pos();
-        const QTextCursor& textCursor = cursorForPosition(pos);
-        const QTextBlock& textBlock = textCursor.block();
-        const int blockNumber = textBlock.blockNumber();
-//        const int firstLineNumber = textBlock.firstLineNumber();
-//        const int lineCount = textBlock.lineCount();
-        if (blockNumber != m_lastMouseOverBlockNumber) {
-//            qDebug() << QString("mouse-over.blockNumber(): %1 -> %2").arg(m_lastMouseOverBlockNumber).arg(blockNumber);
-//            if (m_lastMouseOverBlockNumber >= 0) {
-//                const QTextBlock& lastTextBlock = document()->findBlockByNumber(m_lastMouseOverBlockNumber);
-//                const int lastFirstLineNumber = lastTextBlock.firstLineNumber();
-//                const int lastLineCount = lastTextBlock.lineCount();
-//                QTextLayout* lastTextLayout = lastTextBlock.layout();
-//                QVector<QTextLayout::FormatRange> lastFormatVec = lastTextLayout->formats();
-//                assert(lastFormatVec.size() > 0);
-//                lastFormatVec.removeFirst();
-//                lastTextLayout->setFormats(lastFormatVec);
-//                document()->markContentsDirty(lastTextBlock.position(), lastTextBlock.length());
-//            }
-            m_lastMouseOverBlockNumber = blockNumber;
-            QTextLayout* textLayout = textBlock.layout();
-            QVector<QTextLayout::FormatRange> formatVec = textLayout->formats();
-//            QTextLayout::FormatRange formatRange{};
-//            formatRange.start = 0;
-////            formatRange.length = textBlock.length();
-//            formatRange.length = std::numeric_limits<int>::max();
-//            formatRange.format.setProperty(QTextFormat::Property::FullWidthSelection, true);
-//            formatRange.format.setBackground(QBrush{QColor{192, 230, 255}});
-//            // Intentional: Always paint mouse-over background color *first*, then allow other formats to overwrite.
-//            formatVec.insert(0, std::move(formatRange));
-//            textLayout->setFormats(formatVec);
-//            document()->markContentsDirty(textBlock.position(), textBlock.length());
-
-            QTextEdit::ExtraSelection extra{};
-            extra.cursor = textCursor;
-            // Ref: https://lists.qt-project.org/pipermail/qt-interest-old/2009-August/011566.html
-            extra.format.setProperty(QTextFormat::Property::FullWidthSelection, true);
-//            extra.format.setBackground(QBrush{QColor{192, 230, 255}});
-//            extra.format.setBackground(QBrush{QColor{192, 230, 255}});
-            // Ref: https://www.colorhexa.com/007fff
-            extra.format.setBackground(QBrush{QColor{216, 235, 255}});
-//            extra.format.setBackground(QBrush{QColor{235, 245, 255}});
-            QList<QTextEdit::ExtraSelection> extraList = extraSelections();
-            extraList.clear();
-            extraList.append(extra);
-            // This is RANDOM.  Notice that I only add a *single* dummy "extra" selection.  For unknown reasons, this
-            // causes the full-width (mouse-over) background to paint first, not last.  <shruggy>!
-            // Ref: https://stackoverflow.com/questions/28257022/qsyntaxhighlighter-text-selection-overrides-style
-            if (formatVec.size() > 0) {
-                const QTextLayout::FormatRange& fr = formatVec[0];
-                QTextCursor tc{document()};
-                tc.setPosition(textBlock.position(), QTextCursor::MoveMode::MoveAnchor);
-                tc.setPosition(textBlock.position() + textBlock.length(), QTextCursor::MoveMode::KeepAnchor);
-                QTextEdit::ExtraSelection extra0{};
-                extra0.cursor = tc;
-                extra0.format = fr.format;
-                extraList.append(extra0);
-            }
-            setExtraSelections(extraList);
-        }
-    }
+    // (1) Mouse tracking is *not* enabled.  Thus, this method is only called when a mouse button is pressed.
+    // (2) Only process the event if IBeamCursor for text selection.
+    // (3) Ignore this event for other cursor shapes to prevent text selection during drag.
     if (Qt::CursorShape::IBeamCursor == m_cursorShape) {
         Base::mouseMoveEvent(event);
-        return;
-    }
-    // First visible line
-    const QTextCursor& textCursor0 = cursorForPosition(QPoint(0, 0));
-    const QTextBlock& textBlock0 = textCursor0.block();
-    const QString& text0 = textBlock0.text();
-    // Ex: 18, 20, or 24
-    // In practice, due to slight line height variations due to latin and non-latin (CJK) chars,
-    // this line height is not uniform.  Usually, CJK chars are slightly tallers than latin chars.
-    const qreal height0 = textBlock0.layout()->boundingRect().height();
-    const QPoint pos = event->pos();
-    // Coordinate system origin (0, 0) is top left.
-    const int dXPixel = m_lastMouseMovePoint.x() - pos.x();
-    const int dYPixel = m_lastMouseMovePoint.y() - pos.y();
-    // Intentional: Integer truncate: 17/18 -> 0!
-    const int dLine = dYPixel / ((int) height0);
-    // For QPlainTextEdit, horizonal scrolling is smooth -- per pixel.  Thus, horizonal bar range is pixels.
-    // However, vertical scrolling is not smooth -- per line.  Thus, vertical bar range is lines.
-    // If first visible line height is 18 pixels
-    const int hbarPixel = horizontalScrollBar()->value();
-    const int vbarLine = verticalScrollBar()->value();
-//        qDebug() << QString("x[%1,%2]: %3 + %4 = %5, vbarLine[%6,%7]: %8 + %9 = %10, dy2: %11")
-//            .arg(horizontalScrollBar()->minimum()).arg(horizontalScrollBar()->maximum())
-//            .arg(hbarPixel).arg(dXPixel).arg(hbarPixel + dXPixel)
-//            .arg(verticalScrollBar()->minimum()).arg(verticalScrollBar()->maximum())
-//            .arg(vbarLine).arg(dYPixel).arg(vbarLine + dYPixel)
-//            .arg(dLine);
-    horizontalScrollBar()->setValue(hbarPixel + dXPixel);
-    // Always update horizontal mouse move point, as this is pixel-based, not line-based.
-    m_lastMouseMovePoint.rx() -= dXPixel;
-    // Only update vertical mouse move point if at least one line of vertical distance moved.
-    if (0 != dLine) {
-        verticalScrollBar()->setValue(vbarLine + dLine);
-        m_lastMouseMovePoint.ry() -= dYPixel;
     }
 }
 
@@ -484,7 +666,7 @@ focusOutEvent(QFocusEvent* e)  // override
 {
     // Triggered when: Ctrl pressed, then Ctrl+F pressed -> focus transfered to find text lineedit.
     Private::setCursor(*this, Qt::CursorShape::IBeamCursor);
-    QPlainTextEdit::focusOutEvent(e);
+    Base::focusOutEvent(e);
 }
 
 // protected
@@ -503,9 +685,24 @@ void
 PlainTextEdit::
 resizeEvent(QResizeEvent* e)  // override
 {
-    QPlainTextEdit::resizeEvent(e);
-
+    Base::resizeEvent(e);
     m_lineNumberAreaWidget->setMinimumWidth(lineNumberAreaWidth());
+}
+
+// protected
+bool
+PlainTextEdit::
+event(QEvent* event)  // override
+{
+    const QEvent::Type type = event->type();
+    switch (type) {
+        case QEvent::Type::HoverMove: {
+            Private::hoverMoveEvent(*this, static_cast<QHoverEvent*>(event));
+            break;
+        }
+    }
+    const bool x = Base::event(event);
+    return x;
 }
 
 }  // namespace SDV

@@ -450,10 +450,9 @@ MainWindow::
 MainWindow(MainWindowManager& mainWindowManager,
            const std::unordered_map<JsonNodeType, TextFormat>& formatMap,
            QString absFilePath /*= QString()*/,
-           // Copied from QMainWindow
            QWidget* parent /*= nullptr*/,
            Qt::WindowFlags flags /*= Qt::WindowFlags()*/)
-    : QMainWindow{parent, flags},
+    : Base{parent, flags},
       m_formatMap{formatMap},
       m_absFilePath{std::move(absFilePath)},
       m_statusBar{new StatusBar{}},

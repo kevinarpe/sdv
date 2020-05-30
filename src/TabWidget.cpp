@@ -44,7 +44,7 @@ struct TabWidget::Private
 // public
 TabWidget::
 TabWidget(QWidget* parent /*= nullptr*/)
-    : QTabWidget(parent)
+    : Base{parent}
 {
     // Ref: https://stackoverflow.com/a/17631983/257299
     QShortcut* nextTabShortcut = new QShortcut(QKeySequence{Qt::CTRL + Qt::Key_PageDown}, this);

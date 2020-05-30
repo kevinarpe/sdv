@@ -14,7 +14,9 @@ class TabWidget : public QTabWidget
     Q_OBJECT
 
 public:
+    using Base = QTabWidget;
     explicit TabWidget(QWidget* parent = nullptr);
+    ~TabWidget() override = default;
 
 private:
     struct Private;

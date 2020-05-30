@@ -13,6 +13,7 @@
 #include <QDebug>
 #include <QDateTime>
 #include <QPainter>
+#include <QScrollBar>
 #include "FindWidget.h"
 #include "GoToWidget.h"
 #include "LineNumberAreaWidget.h"
@@ -54,9 +55,8 @@ struct TextWidget::Private
         if (self.m_lastFindResult.tupleVec.empty()) {
             return;
         }
-        const int firstVisibleBlockNumber = getFirstVisibleBlockNumber(self);
-        // Intentional: -1: Assume last visible line may only be *partially* visible.
-        const int lastVisibleBlockNumber = getLastVisibleBlockNumber(self) - 1;
+        const int firstVisibleBlockIndex = self.m_plainTextEdit->tryGetFirstVisibleBlock().blockNumber();
+        const int lastVisibleBlockIndex =  self.m_plainTextEdit->tryGetLastFullyVisibleBlock().blockNumber();
         bool foundFirstVisibleMatch = false;
 
         const int tupleCount = self.m_lastFindResult.tupleVec.size();
@@ -70,8 +70,8 @@ struct TextWidget::Private
             formatRange.start = tuple.charIndex;
             formatRange.length = tuple.length;
             if (!foundFirstVisibleMatch
-                && tuple.lineIndex >= firstVisibleBlockNumber
-                && tuple.lineIndex <= lastVisibleBlockNumber) {
+                && tuple.lineIndex >= firstVisibleBlockIndex
+                && tuple.lineIndex <= lastVisibleBlockIndex) {
 
                 foundFirstVisibleMatch = true;
                 QTextCursor currTextCursor = self.m_plainTextEdit->textCursor();
@@ -157,33 +157,14 @@ struct TextWidget::Private
             vbar->setValue(lineIndex - 1);
         }
         else {
-            // Intentional: -1: Assume last visible line may only be *partially* visible.
-            const int lastVisibleBlockNumber = getLastVisibleBlockNumber(self) - 1;
-            if (lineIndex > lastVisibleBlockNumber) {
-                const int firstVisibleBlockNumber = getFirstVisibleBlockNumber(self);
-                const int visibleBlockCount = lastVisibleBlockNumber - firstVisibleBlockNumber + 1;
+            const int lastVisibleBlockIndex = self.m_plainTextEdit->tryGetLastFullyVisibleBlock().blockNumber();;
+            if (lineIndex > lastVisibleBlockIndex) {
+                const int firstVisibleBlockIndex = self.m_plainTextEdit->tryGetFirstVisibleBlock().blockNumber();
+                const int visibleBlockCount = lastVisibleBlockIndex - firstVisibleBlockIndex + 1;
                 // Recall: VBar value is *first* visible line.
                 vbar->setValue(lineIndex + 1 - visibleBlockCount);
             }
         }
-    }
-
-    // Ref: https://forum.qt.io/topic/74327/qtextedit-how-to-find-the-visible-part
-    static int
-    getFirstVisibleBlockNumber(const TextWidget& self)
-    {
-        const int x = self.m_plainTextEdit->cursorForPosition(QPoint{0, 0}).block().blockNumber();
-        return x;
-    }
-
-    static int
-    getLastVisibleBlockNumber(const TextWidget& self)
-    {
-        const QPoint point{0, self.m_plainTextEdit->viewport()->height() - 1};
-        const QTextBlock& textBlock = self.m_plainTextEdit->cursorForPosition(point).block();
-//        qDebug() << QString("last visible text: [%1]").arg(textBlock.text());
-        const int x = textBlock.blockNumber();
-        return x;
     }
 
     static int
@@ -419,15 +400,9 @@ TextWidget(QWidget* parent /*= nullptr*/,
                      [this]() { Private::slotGoToWidgetHidden(*this); });
 
     m_plainTextEdit = new PlainTextEdit{};
-//    const Qt::TextInteractionFlags& f1 = m_plainTextEdit->textInteractionFlags();
     m_plainTextEdit->setReadOnly(true);
-//    const Qt::TextInteractionFlags& f2 = m_plainTextEdit->textInteractionFlags();
-//    m_plainTextEdit->setTextInteractionFlags(m_plainTextEdit->textInteractionFlags() | Qt::TextInteractionFlag::TextSelectableByKeyboard);
-//    const Qt::TextInteractionFlags& f3 = m_plainTextEdit->textInteractionFlags();
     m_plainTextEdit->setLineWrapMode(QPlainTextEdit::LineWrapMode::NoWrap);
-//    m_plainTextEdit->setFont(QFont{"Deja Vu Sans Mono", 12});
     m_plainTextEdit->setFont(kDefaultFont);
-//    m_plainTextEdit->lineNumberAreaWidget()->setFont(kDefaultFont);
 
     m_findTextThread = new QThread{this};
 
@@ -452,7 +427,6 @@ TextWidget::
 showEvent(QShowEvent* event)  // override
 {
     m_plainTextEdit->setFocus();
-//    m_circleWidget->raise();
     Base::showEvent(event);
 }
 

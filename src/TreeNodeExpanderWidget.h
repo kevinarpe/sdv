@@ -15,7 +15,7 @@ class TreeNodeExpanderWidget : public QWidget
 
 public:
     using Base = QWidget;
-    explicit TreeNodeExpanderWidget(const QFont& font, QWidget* parent = nullptr, Qt::WindowFlags f = Qt::WindowFlags());
+    explicit TreeNodeExpanderWidget(QWidget* parent = nullptr, Qt::WindowFlags f = Qt::WindowFlags());
     ~TreeNodeExpanderWidget() override = default;
 
 public slots:
