@@ -16,7 +16,7 @@ namespace SDV {
 
 class MainWindowManager;
 class StatusBar;
-class TabWidget;
+//class TabWidget;
 class TextWidget;
 
 class MainWindow : public QMainWindow
@@ -53,9 +53,8 @@ private:
     StatusBar* m_statusBar;
     /** Ex: "7,245 lines, 13,845 Unicode chars, 14,252 UTF-8 bytes" */
     QString m_statusBarTextViewLabelBaseText;
-    TabWidget* m_tabWidget;
+//    TabWidget* m_tabWidget;
     TextWidget* m_textWidget;
-    QTreeView* m_treeView;
     // RAII guarantees when '*this' is destroyed, mainWindowManagerToken will also be destroyed.
     MainWindowManagerToken m_mainWindowManagerToken;
     QAction* m_fileCloseAction;

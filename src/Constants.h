@@ -34,7 +34,7 @@ struct IsRichText
 
     const Qt::TextFormat textFormat;
 private:
-    explicit IsRichText(bool isRichText)
+    explicit IsRichText(const bool isRichText)
         : textFormat(isRichText ? Qt::TextFormat::RichText : Qt::TextFormat::PlainText)
         {}
 };

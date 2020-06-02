@@ -16,15 +16,13 @@
 #include "StatusBar.h"
 #include "TabWidget.h"
 #include "TextWidget.h"
-#include "FindLineEdit.h"
 #include "PlainTextEdit.h"
 #include "PrettyWriter2.h"
 #include "QTextBoundaryFinders.h"
-#include "TreeModel.h"
 
 namespace SDV {
 
-static QLocale locale_{};
+static const QLocale locale_{};
 
 struct shared_ptrs
 {
@@ -181,30 +179,31 @@ struct MainWindow::Private
     {
         rapidjson::StringBuffer sb{nullptr, static_cast<size_t>(bufferCapacity)};
         PrettyWriter2 pw{sb, static_cast<size_t>(bufferCapacity), self.m_formatMap};
-//        RapidJsonHandler rjh{m_formatMap, static_cast<size_t>(bufferCapacity)};
-//        rapidjson::StringBuffer buffer{nullptr, static_cast<size_t>(bufferCapacity)};
-//        rapidjson::PrettyWriter<rapidjson::StringBuffer> prettyWriter{buffer};
-//        prettyWriter.SetIndent(' ', 6);
-//        prettyWriter.SetFormatOptions(rapidjson::PrettyFormatOptions::kFormatSingleLineArray);
-//        doc.Accept(prettyWriter);
         assert(doc.Accept(pw));
-        self.m_textWidget->slotSetPlainText(pw.jsonText(), pw.formatRangeVec());
-        self.m_tabWidget->setHidden(false);
+        const PrettyWriterResult& result = pw.result();
+        self.m_textWidget->setResult(result);
+//        self.m_tabWidget->setHidden(false);
+        self.m_textWidget->setVisible(true);
         self.m_fileCloseAction->setEnabled(true);
-        TreeModel* const treeModel = new TreeModel{pw.rootVec(), self.m_treeView};
-        self.m_treeView->setModel(treeModel);
-        // Intentional: The TreeView is dead due to performance issues.
-//        treeModel->setIndexWidgets(self.m_treeView);
-        self.m_treeView->expandAll();
 
         if (CLIPBOARD_ != self.m_absFilePath && STDIN_ != self.m_absFilePath) {
             self.m_mainWindowManagerToken.getMainWindowManager().tryAddFileOpenRecent(self.m_absFilePath);
         }
         self.setWindowTitle(inputDescription + " - " + WINDOW_TITLE);
-        const int lineCount = 1 + pw.jsonText().count(QLatin1Char{'\n'});
+        setStatusBarText(self, result);
+    }
+
+    static void
+    setStatusBarText(MainWindow& self, const PrettyWriterResult& result)
+    {
+        // In practice, RapidJSON does not append a find newline.
+        const int lineCount = 1 + result.m_jsonText.count(QLatin1Char{'\n'});
+
         const int graphemeCount =
-            QTextBoundaryFinders::countBoundaries(QTextBoundaryFinder::BoundaryType::Grapheme, pw.jsonText());
-        const int byteCount = countBytes(pw.jsonText());
+            QTextBoundaryFinders::countBoundaries(QTextBoundaryFinder::BoundaryType::Grapheme, result.m_jsonText);
+
+        const int byteCount = countBytes(result.m_jsonText);
+
         self.m_statusBarTextViewLabelBaseText =
             QString("%1 %2 | %3 Unicode %4 | %5 UTF-8 %6")
                 .arg(locale_.toString(lineCount))
@@ -244,13 +243,17 @@ struct MainWindow::Private
                  QMessageBox::question(&self, WINDOW_TITLE, "Are you sure you want to close?",
                                        QMessageBox::StandardButton::Yes | QMessageBox::StandardButton::No,
                                        QMessageBox::StandardButton::Yes));
-        if (shallClose) {
+        if (shallClose)
+        {
             self.m_mainWindowManagerToken.getMainWindowManager().afterFileClose(self.m_absFilePath);
 
             if (1 == self.m_mainWindowManagerToken.getMainWindowManager().size()) {
                 self.m_absFilePath.clear();
-                self.m_tabWidget->setHidden(true);
+//                self.m_tabWidget->setHidden(true);
+                self.m_textWidget->setVisible(false);
                 self.m_fileCloseAction->setEnabled(false);
+                self.m_statusBarTextViewLabelBaseText = "";
+                self.m_statusBar->textViewLabel()->setText(self.m_statusBarTextViewLabelBaseText);
                 return false;
             }
         }
@@ -267,20 +270,20 @@ struct MainWindow::Private
                                        QMessageBox::StandardButton::Yes));
         return x;
     }
-
-    static void
-    slotTabChanged(MainWindow& self, const int tabIndex)
-    {
-        if (0 == tabIndex) {
-            self.m_statusBar->textViewLabel()->setVisible(true);
-        }
-        else if (1 == tabIndex) {
-            self.m_statusBar->textViewLabel()->setVisible(false);
-        }
-        else {
-            assert(false);
-        }
-    }
+//
+//    static void
+//    slotTabChanged(MainWindow& self, const int tabIndex)
+//    {
+//        if (0 == tabIndex) {
+//            self.m_statusBar->textViewLabel()->setVisible(true);
+//        }
+//        else if (1 == tabIndex) {
+//            self.m_statusBar->textViewLabel()->setVisible(false);
+//        }
+//        else {
+//            assert(false);
+//        }
+//    }
 
     static void
     slotTextSelectionChanged(MainWindow& self)
@@ -388,10 +391,10 @@ struct MainWindow::Private
         if (doc.HasParseError()) {
             // Ref: https://github.com/Tencent/rapidjson/blob/master/example/pretty/pretty.cpp
             const char* parserError = rapidjson::GetParseError_En(doc.GetParseError());
-            const QString& text =
+            const QString& msg =
                 QString("Failed to parse clipboard text at offset %1: %2").arg(doc.GetErrorOffset()).arg(parserError);
 
-            QMessageBox::critical(&self, WINDOW_TITLE, text,
+            QMessageBox::critical(&self, WINDOW_TITLE, msg,
                                   QMessageBox::StandardButtons(QMessageBox::StandardButton::Ok),
                                   QMessageBox::StandardButton::Ok);
             return;
@@ -413,7 +416,15 @@ struct MainWindow::Private
     static void
     slotAbout(MainWindow& self)
     {
-        QMessageBox::about(&self, WINDOW_TITLE, "Structured Data Viewer");
+        QMessageBox::about(&self, WINDOW_TITLE,
+            QString{"<font size='+1'><b>Structured Data Viewer</b></font>"}
+            + "<p>"
+            + "A fast, convenient viewer for structured data -- JSON, XML, HTML, etc."
+            + "<p>"
+            + "Copyright by Kevin Connor ARPE (<a href='mailto:kevinarpe@gmail.com'>kevinarpe@gmail.com</a>)"
+            + "<br>License: <a href='https://www.gnu.org/licenses/gpl-3.0.en.html'>https://www.gnu.org/licenses/gpl-3.0.en.html</a>"
+            + "<br>Source Code: <a href='https://github.com/kevinarpe/sdv'>https://github.com/kevinarpe/sdv</a>"
+            );
     }
 };
 
@@ -456,33 +467,26 @@ MainWindow(MainWindowManager& mainWindowManager,
       m_formatMap{formatMap},
       m_absFilePath{std::move(absFilePath)},
       m_statusBar{new StatusBar{}},
-      m_tabWidget{new TabWidget{}},
+//      m_tabWidget{new TabWidget{}},
       m_textWidget{new TextWidget{}},
-      m_treeView{new QTreeView{}},
       m_mainWindowManagerToken{mainWindowManager.add(*this)},
       m_isClosing{false}
 {
     setAttribute(Qt::WidgetAttribute::WA_DeleteOnClose);
     setWindowTitle(WINDOW_TITLE);
-    setCentralWidget(m_tabWidget);
+    setCentralWidget(m_textWidget);
     setAcceptDrops(true);
     setStatusBar(m_statusBar);
     m_statusBar->textViewLabel()->setTextFormat(Qt::TextFormat::RichText);
+//
+//    m_tabWidget->addTab(m_textWidget, "Text");
+//    m_tabWidget->addTab(m_treeView, "Tree");
+//    m_tabWidget->setHidden(true);
+//    QObject::connect(m_tabWidget, &TabWidget::currentChanged,
+//                     [this](int tabIndex) { Private::slotTabChanged(*this, tabIndex); });
+//    Private::slotTabChanged(*this, m_tabWidget->currentIndex());
 
-//    TreeModel* const treeModel = new TreeModel{, this};
-//    m_treeView->setModel(treeModel);
-    m_treeView->setHeaderHidden(true);
-    m_treeView->setAnimated(false);
-//    QAbstractItemDelegate* z = m_treeView->itemDelegate();
-//    m_treeView->setIndexWidget(treeModel->index(0, 0, QModelIndex{}), new QLabel{"<html><font color='red'>this</font> is my <font color='green'><b>text</b></font></html>"});
-
-    m_tabWidget->addTab(m_textWidget, "Text");
-    m_tabWidget->addTab(m_treeView, "Tree");
-    m_tabWidget->setHidden(true);
-    QObject::connect(m_tabWidget, &TabWidget::currentChanged,
-                     [this](int tabIndex) { Private::slotTabChanged(*this, tabIndex); });
-    Private::slotTabChanged(*this, m_tabWidget->currentIndex());
-
+    m_textWidget->setVisible(false);
     QObject::connect(m_textWidget->plainTextEdit(), &PlainTextEdit::selectionChanged,
                      [this]() { Private::slotTextSelectionChanged(*this); });
 

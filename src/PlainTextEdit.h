@@ -9,12 +9,13 @@
 #include <QPlainTextEdit>
 #include <QTextBlock>
 #include "IWidgetWithLineNumberArea.h"
+#include "PrettyWriterResult.h"
 class QLabel;
 
 namespace SDV {
 
 class LineNumberAreaWidget;
-class TreeNodeExpanderWidget;
+class PlainTextEditDecorator;
 
 class PlainTextEdit : public QPlainTextEdit, public IWidgetWithLineNumberArea
 {
@@ -25,21 +26,30 @@ public:
     explicit PlainTextEdit(QWidget* parent = nullptr);
     ~PlainTextEdit() override = default;
 
+    /** protected in base class -- annoying */
+    using QPlainTextEdit::blockBoundingRect;
+    /** protected in base class -- annoying */
     using QPlainTextEdit::blockBoundingGeometry;
+    /** protected in base class -- annoying */
     using QPlainTextEdit::contentOffset;
 
     int lineNumberAreaWidth() const override;
     void lineNumberAreaPaintEvent(QPaintEvent* event) override;
     LineNumberAreaWidget* lineNumberAreaWidget() const { return m_lineNumberAreaWidget; }
     QTextBlock tryGetFirstVisibleBlock() const;
-    QTextBlock tryGetLastFullyVisibleBlock() const;
     QTextBlock tryGetLastVisibleBlock() const;
+    QTextBlock tryGetLastFullyVisibleBlock() const;
+    void setResult(const PrettyWriterResult& result);
+    const PrettyWriterResult& result() const { return m_result; }
 
 public slots:
     void slotScrollTopLeft();
     void slotScrollBottomRight();
     void slotScrollPageLeft();
     void slotScrollPageRight();
+
+signals:
+    void signalShow();
 
 protected:
     void contextMenuEvent(QContextMenuEvent* e) override;
@@ -52,6 +62,7 @@ protected:
     void leaveEvent(QEvent* event) override;
     void resizeEvent(QResizeEvent* e) override;
     bool event(QEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 
 private:
     struct Private;
@@ -60,8 +71,8 @@ private:
     QPoint m_lastMouseMovePoint;
     int m_lastMouseOverBlockIndex;
     LineNumberAreaWidget* m_lineNumberAreaWidget;
-    TreeNodeExpanderWidget* m_treeNodeExpanderWidget;
-    QLabel* m_label;
+    PrettyWriterResult m_result;
+    PlainTextEditDecorator* m_decorator;
 };
 
 }  // namespace SDV

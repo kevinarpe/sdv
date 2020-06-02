@@ -55,8 +55,6 @@ add_executable(sdv
         src/Constants.cpp
         src/Constants.h
         src/rapidjson/document.h
-        src/TreeModel.cpp
-        src/TreeModel.h
         src/TreeItem.cpp
         src/TreeItem.h
         src/TextFormat.h
@@ -66,6 +64,11 @@ add_executable(sdv
         src/SmoothShowHideWidget.cpp
         src/SmoothShowHideWidget.h
         src/TreeNodeExpanderWidget.cpp
-        src/TreeNodeExpanderWidget.h)
+        src/TreeNodeExpanderWidget.h
+        src/JsonNode.cpp
+        src/JsonNode.h
+        src/PrettyWriterResult.h
+        src/PlainTextEditDecorator.cpp
+        src/PlainTextEditDecorator.h src/Algorithm.h)
 
 target_link_libraries(sdv Qt5::Widgets)

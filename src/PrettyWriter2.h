@@ -19,8 +19,11 @@
 #include <rapidjson/writer.h>
 #include <rapidjson/prettywriter.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <memory>
-#include "TreeItem.h"
+#include "QtHash.h"
+#include "JsonNode.h"
+#include "PrettyWriterResult.h"
 
 #ifdef __GNUC__
 RAPIDJSON_DIAG_PUSH
@@ -63,23 +66,20 @@ public:
 //        Base(os, allocator, levelDepth),
         Base(os), indentChar_(' '), indentCharCount_(4), formatOptions_(rapidjson::kFormatDefault),
         m_formatMap{formatMap}, m_lastBufferSize{0}
-        {
-            m_buffer.reserve(static_cast<int>(bufferCapacity));
-        }
+    {
+        m_result.m_jsonText.reserve(static_cast<int>(bufferCapacity));
+    }
 
     explicit PrettyWriter2(StackAllocator* allocator = 0, size_t levelDepth = Base::kDefaultLevelDepth) :
         Base(allocator, levelDepth), indentChar_(' '), indentCharCount_(4) {}
 
-    const QString& jsonText() const { return m_buffer; }
-    const QVector<QTextLayout::FormatRange>& formatRangeVec() const { return m_formatRangeVec; }
-//    std::unique_ptr<TreeItem> root() {
-//        assert(m_parentVec.empty());
-//        return std::move(m_root);
-//    };
-    QVector<TreeItem*>&& rootVec() {
-        assert(m_parentVec.empty());
-        assert(1 == m_rootVec.size() || 2 == m_rootVec.size());
-        return std::move(m_rootVec);
+    const PrettyWriterResult&
+    result() const
+    {
+        assert(nullptr != m_result.m_rootNode);
+        assert(m_parentNodeVec.empty());
+        internedTextSet.clear();
+        return m_result;
     }
 
     //! Set custom indentation.
@@ -115,7 +115,7 @@ public:
         PrettyPrefix(rapidjson::kNullType);
         append_();
         bool r = Base::WriteNull();
-        append_(JsonNodeType::Null, -1);
+        append_(JsonNodeType::Null);
         return r;
     }
 //    bool Bool(bool b)           { PrettyPrefix(b ? kTrueType : kFalseType); return Base::WriteBool(b); }
@@ -124,7 +124,7 @@ public:
         PrettyPrefix(b ? rapidjson::kTrueType : rapidjson::kFalseType);
         append_();
         bool r = Base::WriteBool(b);
-        append_(JsonNodeType::Bool, -1);
+        append_(JsonNodeType::Bool);
         return r;
     }
 //    bool Int(int i)             { PrettyPrefix(kNumberType); return Base::WriteInt(i); }
@@ -133,7 +133,7 @@ public:
         PrettyPrefix(rapidjson::kNumberType);
         append_();
         bool r = Base::WriteInt(i);
-        append_(JsonNodeType::Number, -1);
+        append_(JsonNodeType::Number);
         return r;
     }
 //    bool Uint(unsigned u)       { PrettyPrefix(kNumberType); return Base::WriteUint(u); }
@@ -142,7 +142,7 @@ public:
         PrettyPrefix(rapidjson::kNumberType);
         append_();
         bool r = Base::WriteUint(u);
-        append_(JsonNodeType::Number, -1);
+        append_(JsonNodeType::Number);
         return r;
     }
 //    bool Int64(int64_t i64)     { PrettyPrefix(kNumberType); return Base::WriteInt64(i64); }
@@ -151,7 +151,7 @@ public:
         PrettyPrefix(rapidjson::kNumberType);
         append_();
         bool r = Base::WriteInt64(i64);
-        append_(JsonNodeType::Number, -1);
+        append_(JsonNodeType::Number);
         return r;
     }
 //    bool Uint64(uint64_t u64)   { PrettyPrefix(kNumberType); return Base::WriteUint64(u64);  }
@@ -160,7 +160,7 @@ public:
         PrettyPrefix(rapidjson::kNumberType);
         append_();
         bool r = Base::WriteUint64(u64);
-        append_(JsonNodeType::Number, -1);
+        append_(JsonNodeType::Number);
         return r;
     }
     bool Double(double d)
@@ -168,7 +168,7 @@ public:
         PrettyPrefix(rapidjson::kNumberType);
         append_();
         bool r = Base::WriteDouble(d);
-        append_(JsonNodeType::Number, -1);
+        append_(JsonNodeType::Number);
         return r;
     }
 
@@ -178,7 +178,7 @@ public:
         PrettyPrefix(rapidjson::kNumberType);
         append_();
         bool r = Base::WriteString(str, length);
-        append_(JsonNodeType::Number, -1);
+        append_(JsonNodeType::Number);
         return r;
     }
 
@@ -208,7 +208,7 @@ public:
         PrettyPrefix(rapidjson::kObjectType);
         new (Base::level_stack_.template Push<typename Base::Level>()) typename Base::Level(false);
         bool r = Base::WriteStartObject();
-        append_(JsonNodeType::ObjectBegin, -1);
+        append_(JsonNodeType::ObjectBegin);
         return r;
     }
 
@@ -249,7 +249,7 @@ public:
         PrettyPrefix(rapidjson::kArrayType);
         new (Base::level_stack_.template Push<typename Base::Level>()) typename Base::Level(true);
         bool r = Base::WriteStartArray();
-        append_(JsonNodeType::ArrayBegin, -1);
+        append_(JsonNodeType::ArrayBegin);
         return r;
     }
 
@@ -354,8 +354,8 @@ private:
         (void)copy;
         PrettyPrefix(rapidjson::kStringType);
         append_();
-        bool r = Base::WriteString(str, length);
-        append_(jsonNodeType, -1);
+        const bool r = Base::WriteString(str, length);
+        append_(jsonNodeType);
         return r;
     }
 //    LAST: Upgrade to capture/build JSONPath
@@ -365,145 +365,175 @@ private:
         const size_t bufferSize = Base::os_->GetSize();
         const typename TargetEncoding::Ch* str = Base::os_->GetString();
         const QString& token = QString::fromUtf8(str + m_lastBufferSize, bufferSize - m_lastBufferSize);
-        m_buffer.append(token);
+        m_result.m_jsonText.append(token);
         m_lastBufferSize = bufferSize;
+        const int indexOfNewLine = token.indexOf(QLatin1Char{'\n'});
+        if (indexOfNewLine >= 0) {
+            m_currentLine = token.mid(1 + indexOfNewLine);
+            ++m_lineIndex;
+        }
+        else {
+            m_currentLine += token;
+        }
         return token;
     }
+
+    const std::unordered_map<JsonNodeType, TextFormat>& m_formatMap;
+    size_t m_lastBufferSize;
+    QString m_currentLine;
+
+    QVector<JsonNode*> m_parentNodeVec;
+    int m_lineIndex = 0;
+    PrettyWriterResult m_result;
+    mutable std::unordered_set<QString> internedTextSet;
+
     /**
      * @param memberCount
      *        -1 unless ending an object or array
      */
-    void append_(const JsonNodeType jsonNodeType, const int memberCount)
+    void append_(const JsonNodeType jsonNodeType, const int memberCount = -1)
     {
-        QString text = append_();
+        // Intentional: Suppress compiler warning for unused args
+        (void)memberCount;
+        const QString& text = append_();
         std::unordered_map<JsonNodeType, TextFormat>::const_iterator iter = m_formatMap.find(jsonNodeType);
-        if (m_formatMap.end() != iter) {
-            const TextFormat& format = iter->second;
-            m_formatRangeVec.append(
-                QTextLayout::FormatRange{
-                    .start = m_buffer.length() - text.length(),
-                    .length = text.length(),
-                    .format = format.textCharFormat
-                });
-            text = format.richTextPrefix + text + format.richTextSuffix;
-        }
-        switch (jsonNodeType) {
+        JsonNode* child = nullptr;
+        // Must to set pos.charIndex in logic below.
+        PrettyWriterResult::Pos pos{.lineIndex = m_lineIndex};
+        switch (jsonNodeType)
+        {
             case JsonNodeType::Null:
             case JsonNodeType::Bool:
             case JsonNodeType::Number:
             case JsonNodeType::String: {
-                if (m_rootVec.empty()) {
-                    m_rootVec.append(new TreeItem{jsonNodeType, IsRichText::YES, text});
-                    // Intentional: Do not add to m_parentVec.  We are guaranteed to be the root and only node!
+                if (nullptr != m_result.m_rootNode) {
+                    JsonNode* const parent = m_parentNodeVec.last();
+                    if (JsonNodeType::Key == parent->type()) {
+                        m_parentNodeVec.removeLast();
+                    }
+                    child = newJsonNode_(parent, jsonNodeType, text);
                 }
                 else {
-                    TreeItem* const parent = m_parentVec.last();
-                    if (JsonNodeTypes{JsonNodeType::Key} == parent->m_jsonNodeTypes) {
-                        parent->m_jsonNodeTypes |= jsonNodeType;
-                        parent->m_text += text;
-                        m_parentVec.removeLast();
-                    }
-                    else {
-                        // Parent is *probably*: array or key->array.
-                        TreeItem* const item = new TreeItem{jsonNodeType, IsRichText::YES, text, parent};
-                    }
+                    child = newJsonNode_(std::nullopt, jsonNodeType, text);
+                    m_result.m_rootNode.reset(child);
                 }
+                assert(m_formatMap.end() != iter);
+                const TextFormat& format = iter->second;
+                m_result.m_formatRangeVec.append(
+                    QTextLayout::FormatRange{
+                        .start = m_result.m_jsonText.length() - text.length(),
+                        .length = text.length(),
+                        .format = format.textCharFormat
+                    });
+                pos.charIndex = m_currentLine.length() - text.length();
                 break;
             }
             case JsonNodeType::Key: {
-                assert( ! m_rootVec.empty());
-                TreeItem* const parent = m_parentVec.last();
-                // Important: key-object and object are valid parents.  :)
-                assert(parent->m_jsonNodeTypes.testFlag(JsonNodeType::ObjectBegin));
-                TreeItem* const item = new TreeItem{jsonNodeType, IsRichText::YES, text + ": ", parent};
-                m_parentVec.append(item);
+                assert(nullptr != m_result.m_rootNode);
+                JsonNode* const parent = m_parentNodeVec.last();
+                assert(JsonNodeType::ObjectBegin == parent->type());
+                child = newJsonNode_(parent, jsonNodeType, text);
+                m_parentNodeVec.append(child);
+
+                assert(m_formatMap.end() != iter);
+                const TextFormat& format = iter->second;
+                m_result.m_formatRangeVec.append(
+                    QTextLayout::FormatRange{
+                        .start = m_result.m_jsonText.length() - text.length(),
+                        .length = text.length(),
+                        .format = format.textCharFormat
+                    });
+                pos.charIndex = m_currentLine.length() - text.length();
                 break;
             }
             case JsonNodeType::ObjectBegin: {
-                if (m_rootVec.empty()) {
-                    TreeItem* const item = new TreeItem{jsonNodeType, IsRichText::NO, QLatin1String{"{"}};
-                    m_rootVec.append(item);
-                    m_parentVec.append(item);
+                assert(m_formatMap.end() == iter);
+                if (nullptr != m_result.m_rootNode) {
+                    JsonNode* const parent = m_parentNodeVec.last();
+                    if (JsonNodeType::Key == parent->type()) {
+                        m_parentNodeVec.removeLast();
+                    }
+                    child = newJsonNode_(parent, jsonNodeType, QLatin1String{"{"});
+                    m_parentNodeVec.append(child);
                 }
                 else {
-                    TreeItem* const parent = m_parentVec.last();
-                    if (JsonNodeTypes{JsonNodeType::Key} == parent->m_jsonNodeTypes) {
-                        parent->m_jsonNodeTypes |= jsonNodeType;
-                        parent->m_text += QLatin1Char{'{'};
-                    }
-                    else {
-                        // Parent is *probably*: key->array.
-                        TreeItem* const item = new TreeItem{jsonNodeType, IsRichText::NO, "{", parent};
-                        m_parentVec.append(item);
-                    }
+                    child = newJsonNode_(std::nullopt, jsonNodeType, QLatin1String{"{"});
+                    m_result.m_rootNode.reset(child);
+                    m_parentNodeVec.append(child);
                 }
+                assert(QLatin1Char{'{'} == m_currentLine[m_currentLine.length() - 1]);
+                pos.charIndex = m_currentLine.length() - 1;
                 break;
             }
             case JsonNodeType::ArrayBegin: {
-                if (m_rootVec.empty()) {
-                    TreeItem* const item = new TreeItem{jsonNodeType, IsRichText::NO, QLatin1String{"["}};
-                    m_rootVec.append(item);
-                    m_parentVec.append(item);
+                assert(m_formatMap.end() == iter);
+                if (nullptr != m_result.m_rootNode) {
+                    JsonNode* const parent = m_parentNodeVec.last();
+                    if (JsonNodeType::Key == parent->type()) {
+                        m_parentNodeVec.removeLast();
+                    }
+                    child = newJsonNode_(parent, jsonNodeType, QLatin1String{"["});
+                    m_parentNodeVec.append(child);
                 }
                 else {
-                    TreeItem* const parent = m_parentVec.last();
-                    if (JsonNodeTypes{JsonNodeType::Key} == parent->m_jsonNodeTypes) {
-                        parent->m_jsonNodeTypes |= jsonNodeType;
-                        parent->m_text += QLatin1Char{'['};
-                    }
-                    else {
-                        // Parent is *probably*: key->array.
-                        TreeItem* const item = new TreeItem{jsonNodeType, IsRichText::NO, "[", parent};
-                        m_parentVec.append(item);
-                    }
+                    child = newJsonNode_(std::nullopt, jsonNodeType, QLatin1String{"["});
+                    m_result.m_rootNode.reset(child);
+                    m_parentNodeVec.append(child);
                 }
+                assert(QLatin1Char{'['} == m_currentLine[m_currentLine.length() - 1]);
+                pos.charIndex = m_currentLine.length() - 1;
                 break;
             }
-//            LAST(2): Display labels correctly
             case JsonNodeType::ObjectEnd: {
-                TreeItem* const parent = m_parentVec.last();
-                assert(parent->m_jsonNodeTypes.testFlag(JsonNodeType::ObjectBegin));
-                m_parentVec.removeLast();
-                if (0 == memberCount) {
-                    parent->m_jsonNodeTypes |= jsonNodeType;
-                    parent->m_text += QLatin1Char{'}'};
-                }
-                else {
-                    TreeItem* const item =
-                        new TreeItem{jsonNodeType, IsRichText::NO, QLatin1String{"}"}, parent->m_parent};
-                    if (nullptr == parent->m_parent) {
-                        m_rootVec.append(item);
-                    }
-                }
+                assert(m_formatMap.end() == iter);
+                assert(nullptr != m_result.m_rootNode);
+                JsonNode* const parent = m_parentNodeVec.last();
+                assert(JsonNodeType::ObjectBegin == parent->type());
+                m_parentNodeVec.removeLast();
+                // Intentional: We don't need this final child node.
+//                child = newJsonNode_(parent, jsonNodeType, QLatin1String{"}"});
+
+                assert(QLatin1Char{'}'} == m_currentLine[m_currentLine.length() - 1]);
+                pos.charIndex = m_currentLine.length() - 1;
                 break;
             }
             case JsonNodeType::ArrayEnd: {
-                TreeItem* const parent = m_parentVec.last();
-                assert(parent->m_jsonNodeTypes.testFlag(JsonNodeType::ArrayBegin));
-                m_parentVec.removeLast();
-                if (0 == memberCount) {
-                    parent->m_jsonNodeTypes |= jsonNodeType;
-                    parent->m_text += QLatin1Char{']'};
-                }
-                else {
-                    TreeItem* const item =
-                        new TreeItem{jsonNodeType, IsRichText::NO, QLatin1String{"]"}, parent->m_parent};
-                    if (nullptr == parent->m_parent) {
-                        m_rootVec.append(item);
-                    }
-                }
+                assert(m_formatMap.end() == iter);
+                assert(nullptr != m_result.m_rootNode);
+                JsonNode* const parent = m_parentNodeVec.last();
+                assert(JsonNodeType::ArrayBegin == parent->type());
+                m_parentNodeVec.removeLast();
+                // Intentional: We don't need this final child node.
+//                child = newJsonNode_(parent, jsonNodeType, QLatin1String{"]"});
+
+                assert(QLatin1Char{']'} == m_currentLine[m_currentLine.length() - 1]);
+                pos.charIndex = m_currentLine.length() - 1;
                 break;
             }
             default:
                 assert(false);
         }
+        if (m_lineIndex == m_result.m_lineIndex_To_NodeVec.size()) {
+            m_result.m_lineIndex_To_NodeVec.append(QVector<JsonNode*>{});
+        }
+        if (nullptr != child)
+        {
+            assert(false == m_result.m_nodeToPosMap.contains(child));
+            m_result.m_nodeToPosMap.insert(child, pos);
+
+            m_result.m_lineIndex_To_NodeVec.last().append(child);
+        }
     }
-    const std::unordered_map<JsonNodeType, TextFormat>& m_formatMap;
-    QString m_buffer;
-    size_t m_lastBufferSize;
-    QVector<QTextLayout::FormatRange> m_formatRangeVec;
-    QVector<TreeItem*> m_rootVec;
-    QVector<TreeItem*> m_parentVec;
+
+    JsonNode*
+    newJsonNode_(std::optional<JsonNode*> optionalParent, JsonNodeType type, const QString& text)
+    {
+        // See: https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/lang/String.html#intern()
+        std::pair<std::unordered_set<QString>::iterator, bool> insert_pair = internedTextSet.insert(text);
+        const QString& internedText = *(insert_pair.first);
+        JsonNode* const x = new JsonNode{optionalParent, type, internedText};
+        return x;
+    }
 
     // Prohibit copy constructor & assignment operator.
     PrettyWriter2(const PrettyWriter2&);

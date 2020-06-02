@@ -14,7 +14,7 @@ namespace SDV {
 class TreeItem
 {
 public:
-    explicit TreeItem(JsonNodeType jsonNodeType, IsRichText isRichText, const QString& text, TreeItem* parent = nullptr);
+    TreeItem(JsonNodeType jsonNodeType, IsRichText isRichText, const QString& text, TreeItem* parent = nullptr);
     ~TreeItem();
 
     int rowIndex() const;

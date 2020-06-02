@@ -59,7 +59,7 @@ getAbsFilePath(const QString& filePath);
  * -> Again, a checkbox could be used to quickly toggle between full and cram-down visual modes.
  * The TreeView is horribly slow.  We need to add +/- icons in the gutter.
  * -> All the "tree" work is not a loss.  Why?  We will need it to correctly impl +/- icons in the gutter.
- * After closing document, clear the status bar.
+ * Add nice shortcut keys help panel.  (Right side?)  Printable as PDF?
  *
  * x Input?  x Clipboard, x file, x drag-n-drop
  * x Multiple tabs->windows for multiple inputs
@@ -77,7 +77,7 @@ getAbsFilePath(const QString& filePath);
  * x All "file" input to be: regular file by command line option, stdin, GUI file picker, drag and drop file, clipboard
  * x Parsing of input... be "gentle" on failures
  * x Selected text should have range and count of lines & char count displayed in status bar
- *
+ * x After closing document, clear the status bar.
  */
 int main(int argc, char *argv[])
 {

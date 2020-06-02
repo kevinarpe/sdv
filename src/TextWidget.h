@@ -10,6 +10,7 @@
 #include <QThread>
 #include "FindThreadWorker.h"
 #include "FindLineEdit.h"
+#include "PrettyWriterResult.h"
 
 namespace SDV {
 
@@ -31,14 +32,13 @@ public:
     ~TextWidget() override = default;
 
     PlainTextEdit* plainTextEdit() const { return m_plainTextEdit; }
+    void setResult(const PrettyWriterResult& result);
 
 protected:
     void showEvent(QShowEvent* event) override;
 //    void hideEvent(QHideEvent* event) override;
 
 public slots:
-    void slotSetPlainText(const QString& plainText,
-                          const QVector<QTextLayout::FormatRange>& formatRangeVec);
     void slotFind();
     void slotGoTo();
 

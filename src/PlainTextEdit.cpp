@@ -11,7 +11,7 @@
 #include <QLabel>
 #include <QScrollBar>
 #include "LineNumberAreaWidget.h"
-#include "TreeNodeExpanderWidget.h"
+#include "PlainTextEditDecorator.h"
 
 namespace SDV {
 
@@ -85,121 +85,6 @@ struct PlainTextEdit::Private
         else {
             self.m_lineNumberAreaWidget->update(0, rect.y(), self.m_lineNumberAreaWidget->width(), rect.height());
         }
-    }
-
-    static void
-    slotTextChanged(PlainTextEdit& self)
-    {
-        const qreal textBlockMinHeight = getTextBlockMinHeight(self);
-        if (0 == textBlockMinHeight) {
-            int dummy = 1;
-            return;
-        }
-        // Dummy value to test if we can correctly place two floating widgets.
-        const int blockIndex = 1;
-        const QTextBlock& textBlock = self.document()->findBlockByLineNumber(blockIndex);
-        assert(textBlock.isValid());
-        const QString& text = textBlock.text();
-        const int index = indexOfFirstNonWhitespace(text);
-        if (0 == index) {
-            int dummy = 1;
-            return;
-        }
-        const QRectF& bbg = self.blockBoundingGeometry(textBlock);
-        const QPointF& co = self.contentOffset();
-        const QRectF& bbgt = bbg.translated(co);
-        const QFontMetrics& fm = self.fontMetrics();
-        const QString& whitespacePrefix = text.left(index - 2);
-        const qreal xOffset = fm.horizontalAdvance(whitespacePrefix);
-
-        if (nullptr != self.m_treeNodeExpanderWidget) {
-            delete self.m_treeNodeExpanderWidget;
-            self.m_treeNodeExpanderWidget = nullptr;
-        }
-        // Important: Parent is viewport, not self.  Why?  We are using absolute positioning for widgets that float
-        // above the viewport, not self.  There is a subtle difference in coordinate systems.
-        self.m_treeNodeExpanderWidget = new TreeNodeExpanderWidget{self.viewport()};
-        self.m_treeNodeExpanderWidget->setFixedSize(QSizeF{textBlockMinHeight, textBlockMinHeight}.toSize());
-        self.m_treeNodeExpanderWidget->slotSetExpanded(true);
-        const qreal yOffset = (bbgt.height() - self.m_treeNodeExpanderWidget->height()) / 2;
-        self.m_treeNodeExpanderWidget->move(QPointF{bbgt.x() + xOffset, bbgt.y() + yOffset}.toPoint());
-
-        self.m_label = new QLabel{"// size:100", self.viewport()};
-        // Disable bizarre default behaviour where QLabel drag (mouse press+move) will move the whole window.
-        // Ref: https://stackoverflow.com/a/18981898/257299
-        self.m_label->setAttribute(Qt::WidgetAttribute::WA_TransparentForMouseEvents);
-        self.m_label->setFont(self.font());
-        QPalette palette = self.m_label->palette();
-        palette.setColor(self.m_label->foregroundRole(), Qt::GlobalColor::darkGray);
-        self.m_label->setPalette(palette);
-        const qreal xOffset2 = fm.horizontalAdvance(text + "  ");
-        self.m_label->move(QPointF{bbgt.x() + xOffset2, bbgt.y()}.toPoint());
-    }
-
-    static void
-    slotScrollBarValueChanged(PlainTextEdit& self, const Qt::Orientation ori, const int value)
-    {
-        const QTextBlock& tb0 = self.tryGetFirstVisibleBlock();
-        const QTextBlock& tb2 = self.tryGetLastVisibleBlock();
-        const int blockIndex = 1;
-        if (blockIndex < tb0.blockNumber() || blockIndex > tb2.blockNumber()) {
-            self.m_treeNodeExpanderWidget->hide();
-            self.m_label->hide();
-            return;
-        }
-        const QTextBlock& textBlock = self.document()->findBlockByLineNumber(blockIndex);
-        assert(textBlock.isValid());
-        const QString& text = textBlock.text();
-        const int index = indexOfFirstNonWhitespace(text);
-        if (0 == index) {
-            int dummy = 1;
-            return;
-        }
-        const QRectF& bbg = self.blockBoundingGeometry(textBlock);
-        const QPointF& co = self.contentOffset();
-        const QRectF& bbgt = bbg.translated(co);
-        const QFontMetricsF& fm = QFontMetricsF{self.font()};
-        const QString& whitespacePrefix = text.left(index - 2);
-        const qreal xOffset = fm.horizontalAdvance(whitespacePrefix);
-        const qreal yOffset = (bbgt.height() - self.m_treeNodeExpanderWidget->height()) / 2;
-        self.m_treeNodeExpanderWidget->move(QPointF{bbgt.x() + xOffset, bbgt.y() + yOffset}.toPoint());
-        self.m_treeNodeExpanderWidget->show();
-
-        const qreal xOffset2 = fm.horizontalAdvance(text + "  ");
-        self.m_label->move(QPointF{bbgt.x() + xOffset2, bbgt.y()}.toPoint());
-        self.m_label->show();
-    }
-
-    static qreal
-    getTextBlockMinHeight(const PlainTextEdit& self)
-    {
-        qreal minHeight = std::numeric_limits<qreal>::max();
-        for (QTextBlock textBlock = self.document()->firstBlock(); textBlock.isValid(); textBlock = textBlock.next())
-        {
-            if (textBlock.isVisible()) {
-                const QRectF& r = self.blockBoundingRect(textBlock);
-                minHeight = qMin(minHeight, r.height());
-            }
-        }
-        if (std::numeric_limits<qreal>::max() == minHeight) {
-            return 0;
-        }
-        else {
-            return minHeight;
-        }
-    }
-
-    static int
-    indexOfFirstNonWhitespace(const QString& text)
-    {
-        const int length = text.length();
-        for (int i = 0; i < length; ++i)
-        {
-            if (false == text[i].isSpace()) {
-                return i;
-            }
-        }
-        assert(false);
     }
 
     static void
@@ -341,8 +226,7 @@ PlainTextEdit(QWidget* parent /*= nullptr*/)
       m_cursorShape{Qt::CursorShape::IBeamCursor},
       m_lastMouseMovePoint{INVALID_POINT},
       m_lastMouseOverBlockIndex{-1},
-      m_treeNodeExpanderWidget{nullptr},
-      m_label{nullptr}
+      m_decorator{new PlainTextEditDecorator{*this}}
 {
     // Enable QEvent::Type::HoverMove
     setAttribute(Qt::WidgetAttribute::WA_Hover, true);
@@ -364,25 +248,8 @@ PlainTextEdit(QWidget* parent /*= nullptr*/)
         QShortcut* pageRightShortcut = new QShortcut(QKeySequence(Qt::ALT + Qt::Key_PageDown), this);
         QObject::connect(pageRightShortcut, &QShortcut::activated, this, &PlainTextEdit::slotScrollPageRight);
     }
-//    QObject::connect(this, &PlainTextEdit::blockCountChanged,
-//        [this](int newBlockCount) { Private::slotBlockCountChanged(*this, newBlockCount); });
     QObject::connect(this, &PlainTextEdit::updateRequest,
         [this](const QRect& rect, int dy) { Private::slotUpdateRequest(*this, rect, dy); });
-    QObject::connect(this, &PlainTextEdit::textChanged, [this]() { Private::slotTextChanged(*this); });
-    // Move with arrows or mouse drag of scrollbar will trigger signal valueChanged.
-    // Signal sliderMoved will only trigger for mouse drag.
-    if (nullptr != horizontalScrollBar())
-    {
-        QObject::connect(horizontalScrollBar(), &QScrollBar::valueChanged,
-            [this](const int value) { Private::slotScrollBarValueChanged(*this, Qt::Orientation::Horizontal, value); });
-    }
-    if (nullptr != verticalScrollBar())
-    {
-        QObject::connect(verticalScrollBar(), &QScrollBar::valueChanged,
-            [this](const int value) { Private::slotScrollBarValueChanged(*this, Qt::Orientation::Vertical, value); });
-    }
-//
-//    Private::slotBlockCountChanged(*this, 0);
 }
 
 // public
@@ -428,8 +295,8 @@ lineNumberAreaPaintEvent(QPaintEvent* event)  // override
     const qreal charWidth = fontMetricsF.horizontalAdvance(QLatin1Char{'9'});
     Private::setClipRect(*this, event, &painter);
 
-    while (textBlock.isValid() && top <= event->rect().bottom()) {
-
+    while (textBlock.isValid() && top <= event->rect().bottom())
+    {
         if (textBlock.isVisible()
             // This condition makes no sense to me!  How can it ever be false?
             && nextTop >= event->rect().top()/*
@@ -487,6 +354,7 @@ const
     const QTextCursor& tc = cursorForPosition(point);
     const QTextBlock& tb = tc.block();
     if (tb.isValid()) {
+        // Ex: tb.text(): "                \"description\": \"元野球部マネージャー❤︎…最高の夏をありがとう…❤︎\","
         return tb;
     }
     else {
@@ -529,6 +397,15 @@ const
         const QTextBlock& x = tb.previous();
         return x;
     }
+}
+
+// public
+void
+PlainTextEdit::
+setResult(const PrettyWriterResult& result)
+{
+    m_result = result;
+    setPlainText(result.m_jsonText);
 }
 
 // public slot
@@ -703,6 +580,15 @@ event(QEvent* event)  // override
     }
     const bool x = Base::event(event);
     return x;
+}
+
+// protected
+void
+PlainTextEdit::
+showEvent(QShowEvent* event)  // override
+{
+    Base::showEvent(event);
+    emit signalShow();
 }
 
 }  // namespace SDV
