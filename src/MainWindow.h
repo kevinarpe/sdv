@@ -18,6 +18,7 @@ class MainWindowManager;
 class StatusBar;
 //class TabWidget;
 class TextWidget;
+class TextView;
 
 class MainWindow : public QMainWindow
 {
@@ -55,6 +56,7 @@ private:
     QString m_statusBarTextViewLabelBaseText;
 //    TabWidget* m_tabWidget;
     TextWidget* m_textWidget;
+    TextView* m_textView;
     // RAII guarantees when '*this' is destroyed, mainWindowManagerToken will also be destroyed.
     MainWindowManagerToken m_mainWindowManagerToken;
     QAction* m_fileCloseAction;

@@ -24,6 +24,37 @@ struct Algorithm
         }
         return -1;
     }
+
+    struct Map
+    {
+        /**
+         * @tparam _Map
+         *         Ex: std::map<K, V> or std::unordered_map<K, V>
+         *
+         * @param key
+         *        value to find
+         * @param defaultValue
+         *        if key is not found, return this value
+         *
+         * @return value mapped to key or defaultValue
+         *
+         * @see std::map::find(_Key)
+         * @see std::unordered_map::find(_Key)
+         */
+        template<typename _Map, typename _Key, typename _Value>
+        static _Value
+        getOrDefault(const _Map& map, _Key key, _Value defaultValue)
+        {
+            typename _Map::const_iterator i = map.find(key);
+            if (map.cend() == i) {
+                return defaultValue;
+            }
+            else {
+                const _Value& x = i->second;
+                return x;
+            }
+        }
+    };
 };
 
 }  // namespace SDV

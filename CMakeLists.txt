@@ -69,6 +69,15 @@ add_executable(sdv
         src/JsonNode.h
         src/PrettyWriterResult.h
         src/PlainTextEditDecorator.cpp
-        src/PlainTextEditDecorator.h src/Algorithm.h)
+        src/PlainTextEditDecorator.h
+        src/Algorithm.h
+        src/TextViewDocument.cpp
+        src/TextViewDocument.h
+        src/TextView.cpp
+        src/TextView.h
+        src/TextViewDocumentView.cpp
+        src/TextViewDocumentView.h
+        src/TextViewTextCursor.cpp
+        src/TextViewTextCursor.h)
 
 target_link_libraries(sdv Qt5::Widgets)

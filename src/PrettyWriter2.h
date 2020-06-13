@@ -350,8 +350,9 @@ protected:
     rapidjson::PrettyFormatOptions formatOptions_;
 
 private:
-    bool StringOrKey_(JsonNodeType jsonNodeType, const Ch* str, rapidjson::SizeType length, bool copy = false) {
-        (void)copy;
+    bool StringOrKey_(JsonNodeType jsonNodeType, const Ch* str, rapidjson::SizeType length, bool isCopy = false)
+    {
+        (void)isCopy;
         PrettyPrefix(rapidjson::kStringType);
         append_();
         const bool r = Base::WriteString(str, length);
@@ -361,7 +362,8 @@ private:
 //    LAST: Upgrade to capture/build JSONPath
 //    Is it possible to capture begin and end of objects & arrays to highlight background box, like Chrome plugin?
 //    Also, that begin/end can be used for nice "jump to..." begin/end feature in text view.
-    QString append_() {
+    QString append_()
+    {
         const size_t bufferSize = Base::os_->GetSize();
         const typename TargetEncoding::Ch* str = Base::os_->GetString();
         const QString& token = QString::fromUtf8(str + m_lastBufferSize, bufferSize - m_lastBufferSize);
@@ -491,7 +493,7 @@ private:
                 assert(JsonNodeType::ObjectBegin == parent->type());
                 m_parentNodeVec.removeLast();
                 // Intentional: We don't need this final child node.
-//                child = newJsonNode_(parent, jsonNodeType, QLatin1String{"}"});
+                child = newJsonNode_(parent, jsonNodeType, QLatin1String{"}"});
 
                 assert(QLatin1Char{'}'} == m_currentLine[m_currentLine.length() - 1]);
                 pos.charIndex = m_currentLine.length() - 1;
@@ -504,7 +506,7 @@ private:
                 assert(JsonNodeType::ArrayBegin == parent->type());
                 m_parentNodeVec.removeLast();
                 // Intentional: We don't need this final child node.
-//                child = newJsonNode_(parent, jsonNodeType, QLatin1String{"]"});
+                child = newJsonNode_(parent, jsonNodeType, QLatin1String{"]"});
 
                 assert(QLatin1Char{']'} == m_currentLine[m_currentLine.length() - 1]);
                 pos.charIndex = m_currentLine.length() - 1;
@@ -528,9 +530,16 @@ private:
     JsonNode*
     newJsonNode_(std::optional<JsonNode*> optionalParent, JsonNodeType type, const QString& text)
     {
+//        static int staticCount = 0;
         // See: https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/lang/String.html#intern()
         std::pair<std::unordered_set<QString>::iterator, bool> insert_pair = internedTextSet.insert(text);
         const QString& internedText = *(insert_pair.first);
+//        if (insert_pair.second) {
+//            ++staticCount;
+//            if (0 == (staticCount % 1000)) {
+//                qDebug() << staticCount;
+//            }
+//        }
         JsonNode* const x = new JsonNode{optionalParent, type, internedText};
         return x;
     }

@@ -18,10 +18,10 @@ public:
     JsonNode(std::optional<JsonNode*> optionalParent, JsonNodeType type, const QString& text);
     ~JsonNode();
 
-    std::optional<JsonNode*> optionalParent() const { return m_optionalParent; }
+    const std::optional<JsonNode*>& optionalParent() const { return m_optionalParent; }
     JsonNodeType type() const { return m_type; }
     const QString& text() const { return m_text; }
-    const QVector<JsonNode*> childVec() const { return m_childVec; }
+    const QVector<JsonNode*>& childVec() const { return m_childVec; }
 
 private:
     // TODO: Convert to <const JsonNode*>?

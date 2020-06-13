@@ -20,17 +20,6 @@ TreeNodeExpanderWidget(QWidget* parent /*= nullptr*/, Qt::WindowFlags f /*= Qt::
     setCursor(Qt::CursorShape::ArrowCursor);
 }
 
-// public slot
-void
-TreeNodeExpanderWidget::
-slotSetExpanded(const bool isExpanded)
-{
-    if (isExpanded != m_isExpanded) {
-        m_isExpanded = isExpanded;
-        emit signalIsExpanded(isExpanded);
-    }
-}
-
 // protected
 void
 TreeNodeExpanderWidget::
@@ -90,7 +79,7 @@ void TreeNodeExpanderWidget::
 mousePressEvent(QMouseEvent* event)  // override
 {
     Base::mousePressEvent(event);
-    m_isExpanded = !m_isExpanded;
+    m_isExpanded = ! m_isExpanded;
     update();
     emit signalIsExpanded(m_isExpanded);
 }

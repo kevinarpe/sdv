@@ -21,7 +21,7 @@ public:
 public slots:
 //    void slotExpand();
 //    void slotCollapse();
-    void slotSetExpanded(bool isExpanded);
+    void slotSetExpanded(const bool isExpanded) { m_isExpanded = isExpanded; }
 
 signals:
     void signalIsExpanded(bool isExpanded);

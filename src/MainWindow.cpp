@@ -19,6 +19,9 @@
 #include "PlainTextEdit.h"
 #include "PrettyWriter2.h"
 #include "QTextBoundaryFinders.h"
+#include "TextView.h"
+#include "TextViewDocument.h"
+#include "TextViewTextCursor.h"
 
 namespace SDV {
 
@@ -183,7 +186,11 @@ struct MainWindow::Private
         const PrettyWriterResult& result = pw.result();
         self.m_textWidget->setResult(result);
 //        self.m_tabWidget->setHidden(false);
-        self.m_textWidget->setVisible(true);
+//        self.m_textWidget->setVisible(true);
+        const QStringList& lineList = result.m_jsonText.split(QRegularExpression{"\\r?\\n"});
+        std::vector<QString> lineVec{lineList.begin(), lineList.end()};
+        self.m_textView->setDoc(std::make_shared<TextViewDocument>(std::move(lineVec)));
+        self.m_textView->setVisible(true);
         self.m_fileCloseAction->setEnabled(true);
 
         if (CLIPBOARD_ != self.m_absFilePath && STDIN_ != self.m_absFilePath) {
@@ -466,15 +473,17 @@ MainWindow(MainWindowManager& mainWindowManager,
     : Base{parent, flags},
       m_formatMap{formatMap},
       m_absFilePath{std::move(absFilePath)},
-      m_statusBar{new StatusBar{}},
-//      m_tabWidget{new TabWidget{}},
-      m_textWidget{new TextWidget{}},
+      m_statusBar{new StatusBar{this}},
+//      m_tabWidget{new TabWidget{this}},
+      m_textWidget{new TextWidget{this}},
+      m_textView{new TextView{this}},
       m_mainWindowManagerToken{mainWindowManager.add(*this)},
       m_isClosing{false}
 {
     setAttribute(Qt::WidgetAttribute::WA_DeleteOnClose);
     setWindowTitle(WINDOW_TITLE);
-    setCentralWidget(m_textWidget);
+//    setCentralWidget(m_textWidget);
+    setCentralWidget(m_textView);
     setAcceptDrops(true);
     setStatusBar(m_statusBar);
     m_statusBar->textViewLabel()->setTextFormat(Qt::TextFormat::RichText);
@@ -490,8 +499,15 @@ MainWindow(MainWindowManager& mainWindowManager,
     QObject::connect(m_textWidget->plainTextEdit(), &PlainTextEdit::selectionChanged,
                      [this]() { Private::slotTextSelectionChanged(*this); });
 
+    m_textView->setFont(QFont{"Deja Vu Sans Mono", 12});
+    // Intentional: Use default from IntelliJ.
+    m_textView->textCursor().slotSetBlinkMillis(500);
+    m_textView->setVisible(false);
+
     QMenu* fileMenu = menuBar()->addMenu("&File");
-    fileMenu->addAction("&Open File...", [this]() { Private::slotOpen(*this); }, QKeySequence::StandardKey::Open);
+    fileMenu->addAction(
+        "&Open File...", [this]() { Private::slotOpen(*this); }, QKeySequence::StandardKey::Open);
+
     fileMenu->addAction("Open from Clipboard", [this]() { Private::slotOpenFromClipboard(*this); });
 
     m_fileOpenRecentMenu = fileMenu->addMenu("Open &Recent");
@@ -550,7 +566,8 @@ setGeometry(MainWindow* other /*= nullptr*/)
 {
     const QList<QScreen*> screenList = QGuiApplication::screens();
     if (nullptr == other) {
-        QScreen* const screen = screenList[0];
+        // TODO: FIXME: "2" is a personal pref of far left screen!
+        QScreen* const screen = screenList[2];
         const QRect screen0Rect = screen->availableGeometry();
         const QRect rect =
             QStyle::alignedRect(

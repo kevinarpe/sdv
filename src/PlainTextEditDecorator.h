@@ -35,11 +35,13 @@ private:
     {
         JsonNode* m_jsonNode;
         TreeNodeExpanderWidget* m_expander;
+        QMetaObject::Connection m_expanderConnection;
         QLabel* m_sizeLabel;
     };
     std::vector<TreeNode> m_freeTreeNodeVec;
     std::vector<TreeNode> m_usedTreeNodeVec;
     qreal m_textBlockMinHeight;
+    std::unordered_map<JsonNode*, bool> m_jsonNodeToIsExpandedMap;
 };
 
 }  // namespace SDV

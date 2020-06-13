@@ -45,6 +45,8 @@ public:
 public slots:
     void slotScrollTopLeft();
     void slotScrollBottomRight();
+    void slotScrollHorizontalHome();
+    void slotScrollHorizontalEnd();
     void slotScrollPageLeft();
     void slotScrollPageRight();
 

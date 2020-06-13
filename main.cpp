@@ -60,6 +60,7 @@ getAbsFilePath(const QString& filePath);
  * The TreeView is horribly slow.  We need to add +/- icons in the gutter.
  * -> All the "tree" work is not a loss.  Why?  We will need it to correctly impl +/- icons in the gutter.
  * Add nice shortcut keys help panel.  (Right side?)  Printable as PDF?
+ * Character inspection mode: Character under cursor has balloon pop-up to share Unicode details.
  *
  * x Input?  x Clipboard, x file, x drag-n-drop
  * x Multiple tabs->windows for multiple inputs

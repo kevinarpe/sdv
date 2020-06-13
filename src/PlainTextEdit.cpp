@@ -241,6 +241,14 @@ PlainTextEdit(QWidget* parent /*= nullptr*/)
         QObject::connect(bottomRightShortcut, &QShortcut::activated, this, &PlainTextEdit::slotScrollBottomRight);
     }
     {
+        QShortcut* topLeftShortcut = new QShortcut(QKeySequence(Qt::ALT + Qt::Key_Home), this);
+        QObject::connect(topLeftShortcut, &QShortcut::activated, this, &PlainTextEdit::slotScrollHorizontalHome);
+    }
+    {
+        QShortcut* topLeftShortcut = new QShortcut(QKeySequence(Qt::ALT + Qt::Key_End), this);
+        QObject::connect(topLeftShortcut, &QShortcut::activated, this, &PlainTextEdit::slotScrollHorizontalEnd);
+    }
+    {
         QShortcut* pageLeftShortcut = new QShortcut(QKeySequence(Qt::ALT + Qt::Key_PageUp), this);
         QObject::connect(pageLeftShortcut, &QShortcut::activated, this, &PlainTextEdit::slotScrollPageLeft);
     }
@@ -289,7 +297,7 @@ lineNumberAreaPaintEvent(QPaintEvent* event)  // override
     qreal top = viewport()->y() + bbgt.top();
     qreal height = bbg.height();
     qreal nextTop = top + height;
-    const QFontMetricsF& fontMetricsF = QFontMetricsF(font());
+    const QFontMetricsF& fontMetricsF = QFontMetricsF{font()};
     const qreal fontHeight = fontMetricsF.height();
     const qreal width = m_lineNumberAreaWidget->width();
     const qreal charWidth = fontMetricsF.horizontalAdvance(QLatin1Char{'9'});
@@ -415,6 +423,22 @@ slotScrollTopLeft()
 {
     horizontalScrollBar()->setValue(0);
     verticalScrollBar()->setValue(0);
+}
+
+// public slot
+void
+PlainTextEdit::
+slotScrollHorizontalHome()
+{
+    horizontalScrollBar()->setValue(0);
+}
+
+// public slot
+void
+PlainTextEdit::
+slotScrollHorizontalEnd()
+{
+    horizontalScrollBar()->setValue(horizontalScrollBar()->maximum());
 }
 
 // public slot

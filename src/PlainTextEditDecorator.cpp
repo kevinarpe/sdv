@@ -83,7 +83,9 @@ struct PlainTextEditDecorator::Private
              textBlock.isValid() && textBlock.blockNumber() <= lastVisibleBlock.blockNumber();
              textBlock = textBlock.next())
         {
-            assert(textBlock.isVisible());
+            if (false == textBlock.isVisible()) {
+                continue;
+            }
             const int lineIndex = textBlock.blockNumber();
             const QVector<JsonNode*>& nodeVec = result.m_lineIndex_To_NodeVec[lineIndex];
             for (JsonNode* const jsonNode : nodeVec)
@@ -98,7 +100,7 @@ struct PlainTextEditDecorator::Private
                     int dummy = 1;
                     continue;
                 }
-                const TreeNode& treeNode = getFreeTreeNode(self, self.m_textBlockMinHeight, jsonNode);
+                TreeNode& treeNode = getFreeTreeNode(self, self.m_textBlockMinHeight, jsonNode);
                 const QRectF& bbg = self.m_parent.blockBoundingGeometry(textBlock);
                 const QPointF& co = self.m_parent.contentOffset();
                 const QRectF& bbgt = bbg.translated(co);
@@ -137,7 +139,18 @@ struct PlainTextEditDecorator::Private
     isExpandable(JsonNode* const jsonNode)
     {
         const bool x = ((JsonNodeType::ObjectBegin == jsonNode->type() || JsonNodeType::ArrayBegin == jsonNode->type())
-                        && false == jsonNode->childVec().isEmpty());
+                        // Remember: Every object and array has at least one child: '}' or ']'
+                        && jsonNode->childVec().size() > 1);
+        return x;
+    }
+
+    static bool
+    isExpanded(const PlainTextEditDecorator& self, JsonNode* const jsonNode)
+    {
+        const bool x = Algorithm::Map::getOrDefault(self.m_jsonNodeToIsExpandedMap, jsonNode, true);
+//        if (jsonNode->optionalParent()) {
+//            qDebug() << "isExpanded:" << self.m_parent.result().m_nodeToPosMap[jsonNode].lineIndex << ":" << jsonNode->optionalParent().value()->text() << "." << jsonNode->text() << ":" << x;
+//        }
         return x;
     }
 
@@ -155,6 +168,21 @@ struct PlainTextEditDecorator::Private
 
     static TreeNode&
     getFreeTreeNode(PlainTextEditDecorator& self, const qreal textBlockMinHeight, JsonNode* jsonNode)
+    {
+        TreeNode& treeNode = getFreeTreeNode0(self, textBlockMinHeight, jsonNode);
+        const bool isExpanded = Private::isExpanded(self, jsonNode);
+        treeNode.m_expander->slotSetExpanded(isExpanded);
+        if (treeNode.m_expanderConnection) {
+            QObject::disconnect(treeNode.m_expanderConnection);
+        }
+        treeNode.m_expanderConnection =
+            QObject::connect(treeNode.m_expander, &TreeNodeExpanderWidget::signalIsExpanded,
+                             [&self, jsonNode](const bool isExpanded) { slotSetExpanded(self, jsonNode, isExpanded); });
+        return treeNode;
+    }
+
+    static TreeNode&
+    getFreeTreeNode0(PlainTextEditDecorator& self, const qreal textBlockMinHeight, JsonNode* jsonNode)
     {
         if (self.m_freeTreeNodeVec.empty()) {//<<newline
             TreeNode& x =
@@ -181,14 +209,73 @@ struct PlainTextEditDecorator::Private
     {
         TreeNodeExpanderWidget* const w = new TreeNodeExpanderWidget{getParent(self)};
         w->setFixedSize(QSizeF{textBlockMinHeight, textBlockMinHeight}.toSize());
-        // TODO: Cache the expanded status?
-        w->slotSetExpanded(true);
         w->show();
         return w;
     }
 
+    static void
+    slotSetExpanded(PlainTextEditDecorator& self, JsonNode* const jsonNode, const bool isExpanded)
+    {
+        const bool prevIsExpanded = Private::isExpanded(self, jsonNode);
+        assert(prevIsExpanded != isExpanded);
+        self.m_jsonNodeToIsExpandedMap[jsonNode] = isExpanded;
+        const PrettyWriterResult& result = self.m_parent.result();
+        if (isExpanded) {
+            JsonNode* const firstChild = jsonNode->childVec().first();
+            const PrettyWriterResult::Pos& firstPos = result.m_nodeToPosMap[firstChild];
+            JsonNode* const lastChild = jsonNode->childVec().last();
+            const PrettyWriterResult::Pos& lastPos = result.m_nodeToPosMap[lastChild];
+            assert(firstPos.lineIndex <= lastPos.lineIndex);
+            const QTextBlock& textBlock0 = self.m_parent.document()->findBlockByLineNumber(firstPos.lineIndex);
+            QTextBlock textBlock = textBlock0;
+            for (int lineIndex = firstPos.lineIndex;
+                 lineIndex <= lastPos.lineIndex;
+                 ++lineIndex, textBlock = textBlock.next())
+            {
+                assert(textBlock.isValid());
+                const QVector<JsonNode*>& lineNodeVec = result.m_lineIndex_To_NodeVec[lineIndex];
+                assert( ! lineNodeVec.isEmpty());
+                QVector<JsonNode*>::const_iterator found = std::find_if(lineNodeVec.begin(), lineNodeVec.end(), &Private::isExpandable);
+                if (lineNodeVec.end() == found) {
+                    textBlock.setVisible(true);
+                }
+                else {
+                    JsonNode* const expandableLineNode = *found;
+                    if (Private::isExpanded(self, expandableLineNode)) {
+                        textBlock.setVisible(true);
+                    }
+                    else {
+                        JsonNode* const lastChild2 = expandableLineNode->childVec().last();
+                        const PrettyWriterResult::Pos& lastPos2 = result.m_nodeToPosMap[lastChild2];
+                        lineIndex = lastPos2.lineIndex - 1;
+                        textBlock = self.m_parent.document()->findBlockByLineNumber(lineIndex);
+                    }
+                }
+            }
+        }
+        else {
+            JsonNode* const firstChild = jsonNode->childVec().first();
+            const PrettyWriterResult::Pos& firstPos = result.m_nodeToPosMap[firstChild];
+            JsonNode* const lastChild = jsonNode->childVec().last();
+            const PrettyWriterResult::Pos& lastPos = result.m_nodeToPosMap[lastChild];
+            assert(firstPos.lineIndex <= lastPos.lineIndex);
+            const QTextBlock& textBlock0 = self.m_parent.document()->findBlockByLineNumber(firstPos.lineIndex);
+            QTextBlock textBlock = textBlock0;
+            for (int lineIndex = firstPos.lineIndex;
+                 lineIndex <= lastPos.lineIndex;
+                 ++lineIndex, textBlock = textBlock.next())
+            {
+                assert(textBlock.isValid());
+                textBlock.setVisible(false);
+            }
+        }
+//        self.m_parent.document()->markContentsDirty(0, self.m_parent.document()->end().position());
+//        self.m_parent.update();
+        self.m_parent.show();
+    }
+
     static QLabel*
-    newQLabel(PlainTextEditDecorator& self, JsonNode* jsonNode)
+    newQLabel(PlainTextEditDecorator& self, JsonNode* const jsonNode)
     {
         QLabel* const w = new QLabel{getParent(self)};
         setQLabelText(*w, jsonNode);
@@ -213,7 +300,8 @@ struct PlainTextEditDecorator::Private
     }
 
     static QWidget*
-    getParent(PlainTextEditDecorator& self) {
+    getParent(PlainTextEditDecorator& self)
+    {
         // Important: Parent is viewport, not self.  Why?  We are using absolute positioning for widgets that float
         // above the viewport, not self.  There is a subtle difference in coordinate systems.
         QWidget* const x = self.m_parent.viewport();
