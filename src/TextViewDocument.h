@@ -16,11 +16,11 @@ class TextViewDocument
 public:
     static const std::shared_ptr<TextViewDocument>& staticEmpty() { return s_empty; }
 
-    explicit TextViewDocument(std::vector<QString>&& textLineVec)
-        : m_textLineVec{textLineVec}
+    explicit TextViewDocument(std::vector<QString>&& lineVec)
+        : m_lineVec{lineVec}
     {}
 
-    const std::vector<QString>& textLineVec() const { return m_textLineVec; }
+    const std::vector<QString>& lineVec() const { return m_lineVec; }
 
 private:
     struct Private;
@@ -32,7 +32,7 @@ private:
     // more efficient to store a single QString, then do substrings.
     // keep impl private, but expose public interface as necessary.
     /** Zero or more text blocks of one or more lines of text. */
-    std::vector<QString> m_textLineVec;
+    std::vector<QString> m_lineVec;
 };
 
 }  // namespace SDV

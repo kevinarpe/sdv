@@ -26,35 +26,10 @@ public:
     ~TextView() override; // = default
 
     void setDoc(const std::shared_ptr<TextViewDocument>& doc);
-
-//    enum class TextCursorAction {
-//        Left = 1,Right,Up,Down,
-//        PageUp,PageDown,
-//        Ctrl_PageUp,Ctrl+PageDown,Alt+PageUp,Alt+PageDown
-//    };
-
-    // Left,Right,Up,Down
-    // PageUp,PageDown,Ctrl+PageUp,Ctrl+PageDown,Alt+PageUp,Alt+PageDown
-    // Home,End,Ctrl+Home,Ctrl+End
-//    enum class ScrollAction {
-//        /** Ctrl+Home */
-//        TopLeft,
-//        /** Ctrl+End */
-//        BottomRight,
-//        /** Home */
-//        VerticalHome,
-//        VerticalEnd,
-//        HorizontalHome,
-//        HorizontalEnd,
-//        PageLeft,
-//        PageRight,
-//    };
-
     TextViewTextCursor& textCursor() { return *m_textCursor; }
     int firstVisibleLineIndex() { return m_firstVisibleLineIndex; }
     int lastFullyVisibleLineIndex() { return m_lastFullyVisibleLineIndex; }
     int lastVisibleLineIndex() { return m_lastVisibleLineIndex; }
-//    const QRectF& textCursorRectF() { return m_textCursorRectF; }
     const QRect& textCursorRect() { return m_textCursorRect; }
 
 protected:
@@ -68,7 +43,6 @@ private:
     bool m_isAfterSetDoc;
     QRect m_textCursorRect;
     QRectF m_textCursorRectF;
-    QRectF m_textCursorPrevRectF;
     int m_firstVisibleLineIndex;
     int m_lastFullyVisibleLineIndex;
     int m_lastVisibleLineIndex;

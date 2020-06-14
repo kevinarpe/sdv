@@ -16,13 +16,44 @@ struct Algorithm
     static std::size_t
     findFirstIndexIf(const _Container& __c, _Predicate __p)
     {
-        int i = 0;
-        for (typename _Container::const_iterator iter = __c.cbegin(); __c.cend() != iter; ++iter, ++i) {
-            if (__p(*iter)) {
-                return i;
+        int __index = 0;
+        for (typename _Container::const_iterator __iter = __c.cbegin()
+            ; __c.cend() != __iter
+            ; ++__iter, ++__index)
+        {
+            if (__p(*__iter)) {
+                return __index;
             }
         }
         return -1;
+    }
+
+    template<typename _Container, typename _Value>
+    static _Value
+    frontOrDefault(const _Container& __c, _Value __defaultValue)
+    {
+        typename _Container::const_iterator __iter = __c.cbegin();
+        if (__c.cend() == __iter) {
+            return __defaultValue;
+        }
+        else {
+            const _Value& __x = *__iter;
+            return __x;
+        }
+    }
+
+    template<typename _Container, typename _Value>
+    static _Value
+    backOrDefault(const _Container& __c, _Value __defaultValue)
+    {
+        typename _Container::const_reverse_iterator __iter = __c.crbegin();
+        if (__c.crend() == __iter) {
+            return __defaultValue;
+        }
+        else {
+            const _Value& __x = *__iter;
+            return __x;
+        }
     }
 
     struct Map
@@ -43,15 +74,15 @@ struct Algorithm
          */
         template<typename _Map, typename _Key, typename _Value>
         static _Value
-        getOrDefault(const _Map& map, _Key key, _Value defaultValue)
+        getOrDefault(const _Map& __map, _Key __key, _Value __defaultValue)
         {
-            typename _Map::const_iterator i = map.find(key);
-            if (map.cend() == i) {
-                return defaultValue;
+            typename _Map::const_iterator __iter = __map.find(__key);
+            if (__map.cend() == __iter) {
+                return __defaultValue;
             }
             else {
-                const _Value& x = i->second;
-                return x;
+                const _Value& __x = __iter->second;
+                return __x;
             }
         }
     };

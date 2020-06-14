@@ -46,8 +46,7 @@ public:
     bool isVisible() const { return m_isVisible; }
     int lineIndex() const { return m_lineIndex; }
     int columnIndex() const { return m_columnIndex; }
-    QChar ch() const;
-    QChar prevCh() const;
+    QChar chr() const;
     bool eventFilter(QObject* watched, QEvent* event) override;
     bool isUpdate() const { return m_isUpdate; }
     bool hasMoved() const { return m_hasMoved; }
@@ -77,7 +76,6 @@ protected:
     void timerEvent(QTimerEvent* event) override;
 
 private:
-    // TODO: Is it useful to store cursor location relative to TextView?  Ex: VISIBLE, ABOVE, BELOW
     struct Private;
     TextView& m_textView;
     const TextViewDocumentView& m_docView;
@@ -87,10 +85,22 @@ private:
     bool m_isVisible;
     int m_lineIndex;
     int m_columnIndex;
+    /**
+     * Width (font horizontal advance) of text before cursor.
+     *
+     * When moving up and down, good text editors use min(target, actual) for column index.
+     * Target is only updated for horizontal movement, but not for vertical movement.
+     */
+    qreal m_textBeforeWidth;
+    /**
+     * Width (font horizontal advance) of char under cursor.
+     *
+     * When moving up and down, good text editors use min(target, actual) for column index.
+     * Target is only updated for horizontal movement, but not for vertical movement.
+     */
+    qreal m_chWidth;
     bool m_isUpdate;
     bool m_hasMoved;
-    int m_prevLineIndex;
-    int m_prevColumnIndex;
 };
 
 }  // namespace SDV
