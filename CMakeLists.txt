@@ -96,6 +96,7 @@ add_executable(sdv
         src/TextViewGraphemeCursor.h
         src/TextSegmentFontWidth.cpp
         src/TextSegmentFontWidth.h
-        )
+        src/TextViewSelection.cpp
+        src/TextViewSelection.h)
 
 target_link_libraries(sdv Qt5::Widgets)

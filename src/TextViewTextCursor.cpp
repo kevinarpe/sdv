@@ -34,6 +34,207 @@ struct TextViewTextCursor::Private
         updateAfterMove(self);
     }
 
+    static const QString&
+    getLine(const TextViewTextCursor& self)
+    {
+        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const std::vector<QString>& textLineVec = self.m_docView->doc().lineVec();
+        const QString& line = textLineVec.empty() ? EMPTY_TEXT_LINE : textLineVec[pos.lineIndex];
+        return line;
+    }
+
+    static StopEventPropagation
+    keyPressEvent(TextViewTextCursor& self, QKeyEvent* event)
+    {
+        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        // Assume event will match.  If not, flip to No at very bottom.
+        StopEventPropagation stopEventPropagation = StopEventPropagation::Yes;
+
+        // Ref: https://doc.qt.io/qt-5/qkeysequence.html#standard-shortcuts
+        // Qt::Key::Key_Left
+        if (event->matches(QKeySequence::StandardKey::MoveToPreviousChar))
+        {
+            move(self, &moveLeft);
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_Left
+        else if (event->matches(QKeySequence::StandardKey::SelectPreviousChar))
+        {
+            moveSelect(self, &moveLeft);
+        }
+        // Qt::Key::Key_Right
+        else if (event->matches(QKeySequence::StandardKey::MoveToNextChar))
+        {
+            move(self, &moveRight);
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_Right
+        else if (event->matches(QKeySequence::StandardKey::SelectNextChar))
+        {
+            moveSelect(self, &moveRight);
+        }
+        // Qt::Key::Key_Control + Qt::Key::Key_Left
+        else if (event->matches(QKeySequence::StandardKey::MoveToPreviousWord))
+        {
+            // TODO
+            int dummy = 1;
+        }
+        // Qt::Key::Key_Control + Qt::Key::Key_Right
+        else if (event->matches(QKeySequence::StandardKey::MoveToNextWord))
+        {
+            // TODO
+            const QRegularExpression rx{"\\b"};
+            const QString& line = getLine(self);
+            const QRegularExpressionMatch& match = rx.match(line, pos.charIndex);
+            if (match.hasMatch()) {
+                int dummy = 1;
+            }
+        }
+        // Qt::Key::Key_Home
+        else if (event->matches(QKeySequence::StandardKey::MoveToStartOfLine))
+        {
+            move(self, &moveHome);
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_Home
+        else if (event->matches(QKeySequence::StandardKey::SelectStartOfLine))
+        {
+            moveSelect(self, &moveHome);
+        }
+        // Qt::Key::Key_End
+        else if (event->matches(QKeySequence::StandardKey::MoveToEndOfLine))
+        {
+            move(self, &moveEnd);
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_End
+        else if (event->matches(QKeySequence::StandardKey::SelectEndOfLine))
+        {
+            moveSelect(self, &moveEnd);
+        }
+        // Qt::Key::Key_Control + Qt::Key::Key_Home
+        else if (event->matches(QKeySequence::StandardKey::MoveToStartOfDocument))
+        {
+            move(self, &moveDocHome);
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_Control + Qt::Key::Key_Home
+        else if (event->matches(QKeySequence::StandardKey::SelectStartOfDocument))
+        {
+            moveSelect(self, &moveDocHome);
+        }
+        // Qt::Key::Key_Control + Qt::Key::Key_End
+        else if (event->matches(QKeySequence::StandardKey::MoveToEndOfDocument))
+        {
+            move(self, &moveDocEnd);
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_Control + Qt::Key::Key_End
+        else if (event->matches(QKeySequence::StandardKey::SelectEndOfDocument))
+        {
+            moveSelect(self, &moveDocEnd);
+        }
+        // Qt::Key::Key_Up
+        else if (event->matches(QKeySequence::StandardKey::MoveToPreviousLine))
+        {
+            move(self, &moveUp);
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_Up
+        else if (event->matches(QKeySequence::StandardKey::SelectPreviousLine))
+        {
+            moveSelect(self, &moveUp);
+        }
+        // Qt::Key::Key_Down
+        else if (event->matches(QKeySequence::StandardKey::MoveToNextLine))
+        {
+            move(self, &moveDown);
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_Down
+        else if (event->matches(QKeySequence::StandardKey::SelectNextLine))
+        {
+            moveSelect(self, &moveDown);
+        }
+        // Qt::Key::Key_PageUp
+        else if (event->matches(QKeySequence::StandardKey::MoveToPreviousPage))
+        {
+            move(self, &movePageUp);
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_PageUp
+        else if (event->matches(QKeySequence::StandardKey::SelectPreviousPage))
+        {
+            moveSelect(self, &movePageUp);
+        }
+        // Qt::Key::Key_PageDown
+        else if (event->matches(QKeySequence::StandardKey::MoveToNextPage))
+        {
+            move(self, &movePageDown);
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_PageDown
+        else if (event->matches(QKeySequence::StandardKey::SelectNextPage))
+        {
+            moveSelect(self, &movePageDown);
+        }
+        // Qt::Key::Key_Control + Qt::Key::Key_A
+        else if (event->matches(QKeySequence::StandardKey::SelectAll))
+        {
+            selectAll(self);
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_Control + Qt::Key::Key_A
+        else if (event->matches(QKeySequence::StandardKey::Deselect))
+        {
+            deselect(self);
+        }
+        else {
+            // See: bool QKeyEvent::matches(QKeySequence::StandardKey matchKey) const
+            // "The keypad and group switch modifier should not make a difference"
+            const uint searchkey = (event->modifiers() | event->key()) & ~(Qt::KeypadModifier | Qt::GroupSwitchModifier);
+            if (searchkey == (Qt::Modifier::CTRL | Qt::Key::Key_PageUp))
+            {
+                move(self, &moveViewTop);
+            }
+            else if (searchkey == (Qt::Modifier::SHIFT | Qt::Modifier::CTRL | Qt::Key::Key_PageUp))
+            {
+                moveSelect(self, &moveViewTop);
+            }
+            else if (searchkey == (Qt::Modifier::CTRL | Qt::Key::Key_PageDown))
+            {
+                move(self, &moveViewBottom);
+            }
+            else if (searchkey == (Qt::Modifier::SHIFT | Qt::Modifier::CTRL | Qt::Key::Key_PageDown))
+            {
+                moveSelect(self, &moveViewBottom);
+            }
+            // THIS IS TOUGH TO IMPL! :P
+            else if (searchkey == (Qt::Modifier::ALT | Qt::Key::Key_PageUp))
+            {
+                // TODO
+                int dummy = 1;
+//                verticalScrollToEnsureVisible(self);
+//                QScrollBar* const hbar = self.m_textView.horizontalScrollBar();
+//                if (hbar->value() > hbar->minimum())
+//                {
+//                    const int v = std::max(hbar->minimum(), hbar->value() - hbar->pageStep());
+//                    scrollToValue(hbar, v);
+//                    updateAfterMove(self);
+//                }
+//                clearSelection(self);
+            }
+            else if (searchkey == (Qt::Modifier::ALT | Qt::Key::Key_PageDown))
+            {
+                // TODO
+                int dummy = 1;
+//                verticalScrollToEnsureVisible(self);
+//                QScrollBar* const hbar = self.m_textView.horizontalScrollBar();
+//                if (hbar->value() < hbar->maximum())
+//                {
+//                    const int v = std::min(hbar->maximum(), hbar->value() + hbar->pageStep());
+//                    scrollToValue(hbar, v);
+//                    updateAfterMove(self);
+//                }
+//                clearSelection(self);
+            }
+            else
+            {
+                stopEventPropagation = StopEventPropagation::No;
+            }
+        }
+        return stopEventPropagation;
+    }
+
     static void
     update(TextViewTextCursor& self)
     {
@@ -53,25 +254,6 @@ struct TextViewTextCursor::Private
     }
 
     static void
-    clearSelection(TextViewTextCursor& self)
-    {
-        if (self.m_selectionStartPos.isValid())
-        {
-            self.m_selectionStartPos.invalidate();
-            updateAfterMove(self);
-        }
-    }
-
-    static const QString&
-    getLine(const TextViewTextCursor& self)
-    {
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
-        const std::vector<QString>& textLineVec = self.m_docView->doc().lineVec();
-        const QString& line = textLineVec.empty() ? EMPTY_TEXT_LINE : textLineVec[pos.lineIndex];
-        return line;
-    }
-
-    static void
     move(TextViewTextCursor& self, bool (*doMove)(TextViewTextCursor& self))
     {
         if (doMove(self))
@@ -82,21 +264,34 @@ struct TextViewTextCursor::Private
     }
 
     static void
+    clearSelection(TextViewTextCursor& self)
+    {
+        if (self.m_selection.isValid())
+        {
+            self.m_selection.invalidate();
+            updateAfterMove(self);
+        }
+    }
+
+    static void
     moveSelect(TextViewTextCursor& self, bool (*doMove)(TextViewTextCursor& self))
     {
-        const TextViewPosition pos = self.m_graphemeCursor->pos();
+        // Intentional: Copy not reference!
+        const TextViewPosition origPos = self.m_graphemeCursor->pos();
         if (doMove(self))
         {
-            if (self.m_selectionStartPos.isValid() == false) {
-                self.m_selectionStartPos = pos;
-            }
-            // Intentional: Split else and if for clarity. :)
-            else {
-                // Forward or backware selection cross-over
-                if (self.m_graphemeCursor->pos().isEqual(self.m_selectionStartPos)) {
-                    self.m_selectionStartPos.invalidate();
+            if (self.m_selection.begin.isValid())
+            {
+                // Forward or backward selection cross-over
+                if (self.m_graphemeCursor->pos().isEqual(self.m_selection.begin))
+                {
+                    self.m_selection.begin.invalidate();
                 }
             }
+            else {
+                self.m_selection.begin = origPos;
+            }
+            self.m_selection.end = self.m_graphemeCursor->pos();
             updateAfterMove(self);
         }
     }
@@ -306,185 +501,80 @@ struct TextViewTextCursor::Private
         return false;
     }
 
-    static StopEventPropagation
-    keyPressEvent(TextViewTextCursor& self, QKeyEvent* event)
+    static void
+    selectAll(TextViewTextCursor& self)
     {
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
-        // Assume event will match.  If not, flip to No at very bottom.
-        StopEventPropagation stopEventPropagation = StopEventPropagation::Yes;
-
-        // Qt::Key::Key_Left
-        if (event->matches(QKeySequence::StandardKey::MoveToPreviousChar))
+        const std::vector<QString>& lineVec = self.m_docView->doc().lineVec();
+        if (lineVec.empty())
         {
-            move(self, &moveLeft);
-        }
-        // Qt::Key::Key_Shift + Qt::Key::Key_Left
-        else if (event->matches(QKeySequence::StandardKey::SelectPreviousChar))
-        {
-            moveSelect(self, &moveLeft);
-        }
-        // Qt::Key::Key_Right
-        else if (event->matches(QKeySequence::StandardKey::MoveToNextChar))
-        {
-            move(self, &moveRight);
-        }
-        // Qt::Key::Key_Shift + Qt::Key::Key_Right
-        else if (event->matches(QKeySequence::StandardKey::SelectNextChar))
-        {
-            moveSelect(self, &moveRight);
-        }
-        // Qt::Key::Key_Control + Qt::Key::Key_Left
-        else if (event->matches(QKeySequence::StandardKey::MoveToPreviousWord))
-        {
-            // TODO
-            int dummy = 1;
-        }
-        // Qt::Key::Key_Control + Qt::Key::Key_Right
-        else if (event->matches(QKeySequence::StandardKey::MoveToNextWord))
-        {
-            // TODO
-            const QRegularExpression rx{"\\b"};
-            const QString& line = getLine(self);
-            const QRegularExpressionMatch& match = rx.match(line, pos.charIndex);
-            if (match.hasMatch()) {
-                int dummy = 1;
-            }
-        }
-        // Qt::Key::Key_Home
-        else if (event->matches(QKeySequence::StandardKey::MoveToStartOfLine))
-        {
-            move(self, &moveHome);
-        }
-        // Qt::Key::Key_Shift + Qt::Key::Key_Home
-        else if (event->matches(QKeySequence::StandardKey::SelectStartOfLine))
-        {
-            moveSelect(self, &moveHome);
-        }
-        // Qt::Key::Key_End
-        else if (event->matches(QKeySequence::StandardKey::MoveToEndOfLine))
-        {
-            move(self, &moveEnd);
-        }
-        // Qt::Key::Key_Shift + Qt::Key::Key_End
-        else if (event->matches(QKeySequence::StandardKey::SelectEndOfLine))
-        {
-            moveSelect(self, &moveEnd);
-        }
-        // Qt::Key::Key_Control + Qt::Key::Key_Home
-        else if (event->matches(QKeySequence::StandardKey::MoveToStartOfDocument))
-        {
-            move(self, &moveDocHome);
-        }
-        // Qt::Key::Key_Shift + Qt::Key::Key_Control + Qt::Key::Key_Home
-        else if (event->matches(QKeySequence::StandardKey::SelectStartOfDocument))
-        {
-            moveSelect(self, &moveDocHome);
-        }
-        // Qt::Key::Key_Control + Qt::Key::Key_End
-        else if (event->matches(QKeySequence::StandardKey::MoveToEndOfDocument))
-        {
-            move(self, &moveDocEnd);
-        }
-        // Qt::Key::Key_Shift + Qt::Key::Key_Control + Qt::Key::Key_End
-        else if (event->matches(QKeySequence::StandardKey::SelectEndOfDocument))
-        {
-            moveSelect(self, &moveDocEnd);
-        }
-        // Qt::Key::Key_Up
-        else if (event->matches(QKeySequence::StandardKey::MoveToPreviousLine))
-        {
-            move(self, &moveUp);
-        }
-        // Qt::Key::Key_Shift + Qt::Key::Key_Up
-        else if (event->matches(QKeySequence::StandardKey::SelectPreviousLine))
-        {
-            moveSelect(self, &moveUp);
-        }
-        // Qt::Key::Key_Down
-        else if (event->matches(QKeySequence::StandardKey::MoveToNextLine))
-        {
-            move(self, &moveDown);
-        }
-        // Qt::Key::Key_Shift + Qt::Key::Key_Down
-        else if (event->matches(QKeySequence::StandardKey::SelectNextLine))
-        {
-            moveSelect(self, &moveDown);
-        }
-        // Qt::Key::Key_PageUp
-        else if (event->matches(QKeySequence::StandardKey::MoveToPreviousPage))
-        {
-            move(self, &movePageUp);
-        }
-        // Qt::Key::Key_Shift + Qt::Key::Key_PageUp
-        else if (event->matches(QKeySequence::StandardKey::SelectPreviousPage))
-        {
-            moveSelect(self, &movePageUp);
-        }
-        // Qt::Key::Key_PageDown
-        else if (event->matches(QKeySequence::StandardKey::MoveToNextPage))
-        {
-            move(self, &movePageDown);
-        }
-        // Qt::Key::Key_Shift + Qt::Key::Key_PageDown
-        else if (event->matches(QKeySequence::StandardKey::SelectNextPage))
-        {
-            moveSelect(self, &movePageDown);
+            self.m_selection.begin.invalidate();
+            self.m_selection.end.invalidate();
         }
         else {
-            // See: bool QKeyEvent::matches(QKeySequence::StandardKey matchKey) const
-            // "The keypad and group switch modifier should not make a difference"
-            const uint searchkey = (event->modifiers() | event->key()) & ~(Qt::KeypadModifier | Qt::GroupSwitchModifier);
-            if (searchkey == (Qt::Modifier::CTRL | Qt::Key::Key_PageUp))
             {
-                move(self, &moveViewTop);
+                const int firstVisibleLineIndex = self.m_docView->firstVisibleLineIndex();
+                const QString& firstVisibleLine = lineVec[firstVisibleLineIndex];
+                if (firstVisibleLine.isEmpty())
+                {
+                    self.m_selection.begin =
+                        TextViewPosition{
+                            .lineIndex = firstVisibleLineIndex,
+                            .charIndex = 0,
+                            .graphemeIndex = 0,
+                            .grapheme = SPACE_GRAPHEME
+                        };
+                }
+                else {
+                    QTextBoundaryFinder f{QTextBoundaryFinder::BoundaryType::Grapheme, firstVisibleLine};
+                    const int b = f.toNextBoundary();
+                    assert(-1 != b);
+                    const QString& grapheme = firstVisibleLine.left(b);
+                    self.m_selection.begin =
+                        TextViewPosition{
+                            .lineIndex = firstVisibleLineIndex,
+                            .charIndex = 0,
+                            .graphemeIndex = 0,
+                            .grapheme = grapheme
+                        };
+                }
             }
-            else if (searchkey == (Qt::Modifier::SHIFT | Qt::Modifier::CTRL | Qt::Key::Key_PageUp))
             {
-                moveSelect(self, &moveViewTop);
-            }
-            else if (searchkey == (Qt::Modifier::CTRL | Qt::Key::Key_PageDown))
-            {
-                move(self, &moveViewBottom);
-            }
-            else if (searchkey == (Qt::Modifier::SHIFT | Qt::Modifier::CTRL | Qt::Key::Key_PageDown))
-            {
-                moveSelect(self, &moveViewBottom);
-            }
-            // THIS IS TOUGH TO IMPL! :P
-            else if (searchkey == (Qt::Modifier::ALT | Qt::Key::Key_PageUp))
-            {
-                // TODO
-                int dummy = 1;
-//                verticalScrollToEnsureVisible(self);
-//                QScrollBar* const hbar = self.m_textView.horizontalScrollBar();
-//                if (hbar->value() > hbar->minimum())
-//                {
-//                    const int v = std::max(hbar->minimum(), hbar->value() - hbar->pageStep());
-//                    scrollToValue(hbar, v);
-//                    updateAfterMove(self);
-//                }
-//                clearSelection(self);
-            }
-            else if (searchkey == (Qt::Modifier::ALT | Qt::Key::Key_PageDown))
-            {
-                // TODO
-                int dummy = 1;
-//                verticalScrollToEnsureVisible(self);
-//                QScrollBar* const hbar = self.m_textView.horizontalScrollBar();
-//                if (hbar->value() < hbar->maximum())
-//                {
-//                    const int v = std::min(hbar->maximum(), hbar->value() + hbar->pageStep());
-//                    scrollToValue(hbar, v);
-//                    updateAfterMove(self);
-//                }
-//                clearSelection(self);
-            }
-            else
-            {
-                stopEventPropagation = StopEventPropagation::No;
+                const int lastVisibleLineIndex = self.m_docView->lastVisibleLineIndex();
+                const QString& lastVisibleLine = lineVec[lastVisibleLineIndex];
+                if (lastVisibleLine.isEmpty())
+                {
+                    self.m_selection.begin =
+                        TextViewPosition{
+                            .lineIndex = lastVisibleLineIndex,
+                            .charIndex = 0,
+                            .graphemeIndex = 0,
+                            .grapheme = SPACE_GRAPHEME
+                        };
+                }
+                else {
+                    QTextBoundaryFinder f{QTextBoundaryFinder::BoundaryType::Grapheme, lastVisibleLine};
+                    int graphemeIndex = 0;
+                    while (-1 != f.toNextBoundary()) {
+                        ++graphemeIndex;
+                    }
+                    self.m_selection.begin =
+                        TextViewPosition{
+                            .lineIndex = lastVisibleLineIndex,
+                            .charIndex = lastVisibleLine.length(),
+                            .graphemeIndex = graphemeIndex,
+                            .grapheme = SPACE_GRAPHEME
+                        };
+                }
             }
         }
-        return stopEventPropagation;
+        updateAfterMove(self);
+    }
+
+    static void
+    deselect(TextViewTextCursor& self)
+    {
+        self.m_selection.invalidate();
+        updateAfterMove(self);
     }
 
     static void
@@ -651,8 +741,9 @@ struct TextViewTextCursor::Private
     {
         if (Qt::MouseButton::LeftButton == event->button())
         {
-            if (Qt::KeyboardModifier::ShiftModifier == QGuiApplication::keyboardModifiers()) {
-                self.m_selectionStartPos = self.m_graphemeCursor->pos();
+            if (Qt::KeyboardModifier::ShiftModifier == QGuiApplication::keyboardModifiers())
+            {
+                self.m_selection.begin = self.m_graphemeCursor->pos();
             }
             const StopEventPropagation x = mouseMoveEvent(self, event);
             assert(StopEventPropagation::Yes == x);
@@ -694,7 +785,7 @@ TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentVie
 //      m_graphemeCursor{std::make_unique<TextViewGraphemeCursor>(docView)},
       m_graphemeCursor{std::make_shared<TextViewGraphemeCursor>(docView)},
       m_fontWidth{TextSegmentFontWidth{.beforeGrapheme = 0, .grapheme = 0}},
-      m_selectionStartPos{TextViewPosition::invalid()},
+      m_selection{TextViewSelection::invalid()},
       m_isUpdate{false},
       m_hasMoved{false}
 {

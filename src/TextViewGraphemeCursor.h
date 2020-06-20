@@ -45,7 +45,9 @@ private:
     /**
      * Always points to the QChar index *after* the current grapheme.
      *
-     * For example: In the text "😋r", the QString length is 3 QChars.  The first grapheme "😋" requires two QChars.
+     * For example: In the text "😋r", there are two graphemes, and the QString length is three QChars.
+     * (Note: The first grapheme "😋" requires two QChars.)
+     *
      * When 0 == m_pos.graphemeIndex, 2 == m_graphemeFinder.position().
      * When 1 == m_pos.graphemeIndex, 3 == m_graphemeFinder.position().
      */

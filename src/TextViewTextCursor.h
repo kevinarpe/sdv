@@ -12,6 +12,7 @@
 class QKeyEvent;
 class QPaintEvent;
 #include "TextViewPosition.h"
+#include "TextViewSelection.h"
 
 namespace SDV {
 
@@ -51,7 +52,7 @@ public:
     bool isVisible() const { return m_isVisible; }
     const TextViewPosition& pos() const;
     const QString& grapheme() const;
-    const TextViewPosition& selectionStartPos() const { return m_selectionStartPos; }
+    const TextViewSelection& selection() const { return m_selection; }
     bool isUpdate() const { return m_isUpdate; }
     bool hasMoved() const { return m_hasMoved; }
     void afterPaintEvent();
@@ -92,7 +93,7 @@ private:
 //    std::unique_ptr<TextViewGraphemeCursor> m_graphemeCursor;
     std::shared_ptr<TextViewGraphemeCursor> m_graphemeCursor;
     TextSegmentFontWidth m_fontWidth;
-    TextViewPosition m_selectionStartPos;
+    TextViewSelection m_selection;
     bool m_isUpdate;
     bool m_hasMoved;
 };

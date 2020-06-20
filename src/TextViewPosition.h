@@ -46,7 +46,10 @@ struct TextViewPosition
         return x;
     }
 
-    void invalidate() { *this = invalid(); }
+    void invalidate()
+    {
+        *this = invalid();
+    }
 
     bool isEqual(const TextViewPosition& rhs) const
     {
@@ -70,7 +73,8 @@ struct TextViewPosition
         }
     }
 
-    static TextViewPosition invalid() {
+    static TextViewPosition invalid()
+    {
         return TextViewPosition{.lineIndex = -1, .charIndex = -1, .graphemeIndex = -1, .grapheme = QString{}};
     }
 };

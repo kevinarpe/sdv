@@ -37,25 +37,23 @@ struct TextView::Private
         return x;
     }
 
-    struct TextViewSelection
+    struct SelectionRange
     {
-        /** Do not forget backward selection: right-to-left! */
-        const TextViewPosition& selectionStartPos;
-        /** Do not forget backward selection: right-to-left! */
-        const TextViewPosition& textCursorPos;
         /** Inclusive and normalised for backward selection -- always less or equal to lastLineIndex. */
         const int firstLineIndex;
         /** Inclusive and normalised for backward selection -- always greater or equal to lastLineIndex. */
         const int lastLineIndex;
 
-        explicit TextViewSelection(const TextView& self)
-            : selectionStartPos{self.m_textCursor->selectionStartPos()},
-              textCursorPos{self.m_textCursor->pos()},
-              firstLineIndex{std::min(textCursorPos.lineIndex, selectionStartPos.lineIndex)},
-              lastLineIndex{std::max(textCursorPos.lineIndex, selectionStartPos.lineIndex)}
+        explicit SelectionRange(const TextView& self)
+            : firstLineIndex{std::min(self.m_textCursor->selection().begin.lineIndex,
+                                      self.m_textCursor->selection().end.lineIndex)},
+              lastLineIndex{std::max(self.m_textCursor->selection().begin.lineIndex,
+                                     self.m_textCursor->selection().end.lineIndex)}
         {
-            if (selectionStartPos.isValid()) {
-                assert(false == selectionStartPos.isEqual(textCursorPos));
+            const TextViewSelection& selection = self.m_textCursor->selection();
+            if (selection.begin.isValid())
+            {
+                assert(false == selection.begin.isEqual(selection.end));
             }
         }
     };
@@ -85,37 +83,41 @@ struct TextView::Private
      *        Technically, we only need line.length(), but the full text line is nice for debugging! :)
      */
     static LineSelection
-    lineSelection(const TextViewSelection& selection, const int lineIndex, const QString& line)
+    lineSelection(const TextView& self,
+                  const SelectionRange& selectionRange,
+                  const int lineIndex,
+                  const QString& line)
     {
-        if (selection.selectionStartPos.isValid() == false
-            || lineIndex < selection.firstLineIndex
-            || lineIndex > selection.lastLineIndex)
+        const TextViewSelection& selection = self.textCursor().selection();
+        if (selection.begin.isValid() == false
+            || lineIndex < selectionRange.firstLineIndex
+            || lineIndex > selectionRange.lastLineIndex)
         {
             const LineSelection& x = LineSelection::none(line);
             return x;
         }
         // Forward selection
-        if (selection.selectionStartPos.isLessThan(selection.textCursorPos))
+        if (selection.begin.isLessThan(selection.end))
         {
-            if (lineIndex == selection.selectionStartPos.lineIndex)
+            if (lineIndex == selection.begin.lineIndex)
             {
-                if (lineIndex == selection.textCursorPos.lineIndex)
+                if (lineIndex == selection.end.lineIndex)
                 {
                     // Forward selection: First and last line are same.
                     const LineSelection x{
-                        .beforeLength = selection.selectionStartPos.charIndex,
-                        .length = selection.textCursorPos.charIndex - selection.selectionStartPos.charIndex,
-                        .afterLength = line.length() - selection.textCursorPos.charIndex,
+                        .beforeLength = selection.begin.charIndex,
+                        .length = selection.end.charIndex - selection.begin.charIndex,
+                        .afterLength = line.length() - selection.end.charIndex,
                         .isEnd = true
                     };
                     return x;
                 }
-                else if (lineIndex < selection.textCursorPos.lineIndex)
+                else if (lineIndex < selection.end.lineIndex)
                 {
                     // Forward selection: First line, but more than one line.
                     const LineSelection x{
-                        .beforeLength = selection.selectionStartPos.charIndex,
-                        .length = line.length() - selection.selectionStartPos.charIndex,
+                        .beforeLength = selection.begin.charIndex,
+                        .length = line.length() - selection.begin.charIndex,
                         .afterLength = 0,
                         .isEnd = false
                     };
@@ -125,7 +127,7 @@ struct TextView::Private
                     assert(false);
                 }
             }
-            else if (lineIndex < selection.textCursorPos.lineIndex)
+            else if (lineIndex < selection.end.lineIndex)
             {
                 // Forward selection: Middle line, but not last.
                 const LineSelection x{
@@ -136,13 +138,13 @@ struct TextView::Private
                 };
                 return x;
             }
-            else if (lineIndex == selection.textCursorPos.lineIndex)
+            else if (lineIndex == selection.end.lineIndex)
             {
                 // Forward selection: Last line of many.
                 const LineSelection x{
                     .beforeLength = 0,
-                    .length = selection.textCursorPos.charIndex,
-                    .afterLength = line.length() - selection.textCursorPos.charIndex,
+                    .length = selection.end.charIndex,
+                    .afterLength = line.length() - selection.end.charIndex,
                     .isEnd = true
                 };
                 return x;
@@ -153,25 +155,25 @@ struct TextView::Private
         }
         // Backward selection
         else {
-            if (lineIndex == selection.textCursorPos.lineIndex)
+            if (lineIndex == selection.end.lineIndex)
             {
-                if (lineIndex == selection.selectionStartPos.lineIndex)
+                if (lineIndex == selection.begin.lineIndex)
                 {
                     // Backward selection: First and last line are same.
                     const LineSelection x{
-                        .beforeLength = selection.textCursorPos.charIndex,
-                        .length = selection.selectionStartPos.charIndex - selection.textCursorPos.charIndex,
-                        .afterLength = line.length() - selection.selectionStartPos.charIndex,
+                        .beforeLength = selection.end.charIndex,
+                        .length = selection.begin.charIndex - selection.end.charIndex,
+                        .afterLength = line.length() - selection.begin.charIndex,
                         .isEnd = true
                     };
                     return x;
                 }
-                else if (lineIndex < selection.selectionStartPos.lineIndex)
+                else if (lineIndex < selection.begin.lineIndex)
                 {
                     // Backward selection: First line, but more than one line.
                     const LineSelection x{
-                        .beforeLength = selection.textCursorPos.charIndex,
-                        .length = line.length() - selection.textCursorPos.charIndex,
+                        .beforeLength = selection.end.charIndex,
+                        .length = line.length() - selection.end.charIndex,
                         .afterLength = 0,
                         .isEnd = false
                     };
@@ -181,7 +183,7 @@ struct TextView::Private
                     assert(false);
                 }
             }
-            else if (lineIndex < selection.selectionStartPos.lineIndex)
+            else if (lineIndex < selection.begin.lineIndex)
             {
                 // Backward selection: Middle line, but not last.
                 const LineSelection x{
@@ -192,13 +194,13 @@ struct TextView::Private
                 };
                 return x;
             }
-            else if (lineIndex == selection.selectionStartPos.lineIndex)
+            else if (lineIndex == selection.begin.lineIndex)
             {
                 // Backward selection: Last line of many.
                 const LineSelection x{
                     .beforeLength = 0,
-                    .length = selection.selectionStartPos.charIndex,
-                    .afterLength = line.length() - selection.selectionStartPos.charIndex,
+                    .length = selection.begin.charIndex,
+                    .afterLength = line.length() - selection.begin.charIndex,
                     .isEnd = true
                 };
                 return x;
@@ -226,9 +228,11 @@ struct TextView::Private
         // If text cursor is *not* visible, only re-paint when flagged for update.
         else if (self.m_textCursor->isUpdate())
         {
+            const TextViewSelection& selection = self.m_textCursor->selection();
+
             // If selection is backward (right-to-left), then grapheme under text cursor will be selected.
-            const bool isTextCursorSelected = self.m_textCursor->selectionStartPos().isValid()
-                && self.m_textCursor->pos().isLessThan(self.m_textCursor->selectionStartPos());
+            const bool isTextCursorSelected =
+                selection.begin.isValid() && self.m_textCursor->pos().isLessThan(selection.begin);
 
             if (isTextCursorSelected) {
                 painter.fillRect(self.m_textCursorRectF, SELECTED_TEXT_BRUSH);
@@ -378,7 +382,7 @@ paintEvent(QPaintEvent* event)  // override
             const qreal x = -1 * horizontalScrollBar()->value();
             // Intentional: drawText() expects y as *bottom* of text line.
             qreal y = fontMetricsF.ascent();
-            const Private::TextViewSelection textViewSelection = Private::TextViewSelection{*this};
+            const Private::SelectionRange selectionRange = Private::SelectionRange{*this};
 
             auto visibleLineIndexIter = m_docView->visibleLineBegin() + verticalScrollBar()->value();
             m_firstVisibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
@@ -398,7 +402,7 @@ paintEvent(QPaintEvent* event)  // override
                 const int visibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
                 const QString& line = textLineVec[visibleLineIndex];
                 const Private::LineSelection lineSelection =
-                    Private::lineSelection(textViewSelection, visibleLineIndex, line);
+                    Private::lineSelection(*this, selectionRange, visibleLineIndex, line);
 
                 // If any selection exists on this line, only paint the background.
                 if (lineSelection.length > 0)

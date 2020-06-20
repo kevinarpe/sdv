@@ -62,6 +62,7 @@ getAbsFilePath(const QString& filePath);
  * Add nice shortcut keys help panel.  (Right side?)  Printable as PDF?
  * Character inspection mode: Character under cursor has balloon pop-up to share Unicode details.
  * Status bar: Add current line number and grapheme number and selection info
+ * Like IntelliJ, (Shift+)Ctrl+W will (de)select by scope -- wider and wider.
  *
  * x Input?  x Clipboard, x file, x drag-n-drop
  * x Multiple tabs->windows for multiple inputs
