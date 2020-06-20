@@ -11,7 +11,7 @@
 #include <QRect>
 class QKeyEvent;
 class QPaintEvent;
-#include "TextViewSelection.h"
+#include "TextViewPosition.h"
 
 namespace SDV {
 
@@ -51,8 +51,7 @@ public:
     bool isVisible() const { return m_isVisible; }
     const TextViewPosition& pos() const;
     const QString& grapheme() const;
-    TextViewSelection selection() const;
-
+    const TextViewPosition& selectionStartPos() const { return m_selectionStartPos; }
     bool isUpdate() const { return m_isUpdate; }
     bool hasMoved() const { return m_hasMoved; }
     void afterPaintEvent();

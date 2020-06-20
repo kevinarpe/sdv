@@ -18,6 +18,10 @@
 
 namespace SDV {
 
+static const QString SPACE_GRAPHEME{QLatin1Char{' '}};
+// Baby blue borrowed from IntelliJ! :)
+static const QBrush SELECTED_TEXT_BRUSH{QColor{166, 210, 255}};
+
 // private
 struct TextView::Private
 {
@@ -26,10 +30,225 @@ struct TextView::Private
     {
         qreal x = 0;
         std::for_each(lineVec.begin(), lineVec.end(),
-            [&fontMetricsF, &x](const QString& line) {
+            [&fontMetricsF, &x](const QString& line)
+            {
                 x = std::max(x, fontMetricsF.horizontalAdvance(line));
             });
         return x;
+    }
+
+    struct TextViewSelection
+    {
+        /** Do not forget backward selection: right-to-left! */
+        const TextViewPosition& selectionStartPos;
+        /** Do not forget backward selection: right-to-left! */
+        const TextViewPosition& textCursorPos;
+        /** Inclusive and normalised for backward selection -- always less or equal to lastLineIndex. */
+        const int firstLineIndex;
+        /** Inclusive and normalised for backward selection -- always greater or equal to lastLineIndex. */
+        const int lastLineIndex;
+
+        explicit TextViewSelection(const TextView& self)
+            : selectionStartPos{self.m_textCursor->selectionStartPos()},
+              textCursorPos{self.m_textCursor->pos()},
+              firstLineIndex{std::min(textCursorPos.lineIndex, selectionStartPos.lineIndex)},
+              lastLineIndex{std::max(textCursorPos.lineIndex, selectionStartPos.lineIndex)}
+        {
+            if (selectionStartPos.isValid()) {
+                assert(false == selectionStartPos.isEqual(textCursorPos));
+            }
+        }
+    };
+
+    struct LineSelection
+    {
+        /** QChar count before selection */
+        int beforeLength;
+        /** QChar count of selection */
+        int length;
+        /** QChar count after selection */
+        int afterLength;
+        /**
+         * Does selection end on current line?
+         * <br>If true, do not highlight to right edge of viewport.
+         * <br>If false, highlight to right edge of viewport.
+         */
+        bool isEnd;
+
+        static LineSelection none(const QString& line) {
+            return LineSelection{.beforeLength = line.length(), .length = 0, .afterLength = 0, .isEnd = true};
+        }
+    };
+
+    /**
+     * @param line
+     *        Technically, we only need line.length(), but the full text line is nice for debugging! :)
+     */
+    static LineSelection
+    lineSelection(const TextViewSelection& selection, const int lineIndex, const QString& line)
+    {
+        if (selection.selectionStartPos.isValid() == false
+            || lineIndex < selection.firstLineIndex
+            || lineIndex > selection.lastLineIndex)
+        {
+            const LineSelection& x = LineSelection::none(line);
+            return x;
+        }
+        // Forward selection
+        if (selection.selectionStartPos.isLessThan(selection.textCursorPos))
+        {
+            if (lineIndex == selection.selectionStartPos.lineIndex)
+            {
+                if (lineIndex == selection.textCursorPos.lineIndex)
+                {
+                    // Forward selection: First and last line are same.
+                    const LineSelection x{
+                        .beforeLength = selection.selectionStartPos.charIndex,
+                        .length = selection.textCursorPos.charIndex - selection.selectionStartPos.charIndex,
+                        .afterLength = line.length() - selection.textCursorPos.charIndex,
+                        .isEnd = true
+                    };
+                    return x;
+                }
+                else if (lineIndex < selection.textCursorPos.lineIndex)
+                {
+                    // Forward selection: First line, but more than one line.
+                    const LineSelection x{
+                        .beforeLength = selection.selectionStartPos.charIndex,
+                        .length = line.length() - selection.selectionStartPos.charIndex,
+                        .afterLength = 0,
+                        .isEnd = false
+                    };
+                    return x;
+                }
+                else {
+                    assert(false);
+                }
+            }
+            else if (lineIndex < selection.textCursorPos.lineIndex)
+            {
+                // Forward selection: Middle line, but not last.
+                const LineSelection x{
+                    .beforeLength = 0,
+                    .length = line.length(),
+                    .afterLength = 0,
+                    .isEnd = false
+                };
+                return x;
+            }
+            else if (lineIndex == selection.textCursorPos.lineIndex)
+            {
+                // Forward selection: Last line of many.
+                const LineSelection x{
+                    .beforeLength = 0,
+                    .length = selection.textCursorPos.charIndex,
+                    .afterLength = line.length() - selection.textCursorPos.charIndex,
+                    .isEnd = true
+                };
+                return x;
+            }
+            else {
+                assert(false);
+            }
+        }
+        // Backward selection
+        else {
+            if (lineIndex == selection.textCursorPos.lineIndex)
+            {
+                if (lineIndex == selection.selectionStartPos.lineIndex)
+                {
+                    // Backward selection: First and last line are same.
+                    const LineSelection x{
+                        .beforeLength = selection.textCursorPos.charIndex,
+                        .length = selection.selectionStartPos.charIndex - selection.textCursorPos.charIndex,
+                        .afterLength = line.length() - selection.selectionStartPos.charIndex,
+                        .isEnd = true
+                    };
+                    return x;
+                }
+                else if (lineIndex < selection.selectionStartPos.lineIndex)
+                {
+                    // Backward selection: First line, but more than one line.
+                    const LineSelection x{
+                        .beforeLength = selection.textCursorPos.charIndex,
+                        .length = line.length() - selection.textCursorPos.charIndex,
+                        .afterLength = 0,
+                        .isEnd = false
+                    };
+                    return x;
+                }
+                else {
+                    assert(false);
+                }
+            }
+            else if (lineIndex < selection.selectionStartPos.lineIndex)
+            {
+                // Backward selection: Middle line, but not last.
+                const LineSelection x{
+                    .beforeLength = 0,
+                    .length = line.length(),
+                    .afterLength = 0,
+                    .isEnd = false
+                };
+                return x;
+            }
+            else if (lineIndex == selection.selectionStartPos.lineIndex)
+            {
+                // Backward selection: Last line of many.
+                const LineSelection x{
+                    .beforeLength = 0,
+                    .length = selection.selectionStartPos.charIndex,
+                    .afterLength = line.length() - selection.selectionStartPos.charIndex,
+                    .isEnd = true
+                };
+                return x;
+            }
+            else {
+                assert(false);
+            }
+        }
+        assert(false);
+    }
+
+    static void
+    paintTextCursor(TextView& self, QPainter& painter, const QFontMetricsF& fontMetricsF, const QPalette& palette)
+    {
+        const QString& grapheme = self.m_textCursor->grapheme();
+        const bool isSpace = (SPACE_GRAPHEME == grapheme);
+        // If text cursor is visible, always paint here.
+        if (self.m_textCursor->isVisible())
+        {
+            painter.fillRect(self.m_textCursorRectF, QBrush{QColor{Qt::GlobalColor::black}});
+            if (false == isSpace) {
+                painter.setPen(QPen{QColor{Qt::GlobalColor::white}});
+            }
+        }
+        // If text cursor is *not* visible, only re-paint when flagged for update.
+        else if (self.m_textCursor->isUpdate())
+        {
+            // If selection is backward (right-to-left), then grapheme under text cursor will be selected.
+            const bool isTextCursorSelected = self.m_textCursor->selectionStartPos().isValid()
+                && self.m_textCursor->pos().isLessThan(self.m_textCursor->selectionStartPos());
+
+            if (isTextCursorSelected) {
+                painter.fillRect(self.m_textCursorRectF, SELECTED_TEXT_BRUSH);
+            }
+            else {
+                painter.fillRect(self.m_textCursorRectF, QBrush{palette.color(QPalette::ColorRole::Base)});
+            }
+
+            if (false == isSpace) {
+                painter.setPen(QPen{palette.color(QPalette::ColorRole::Text)});
+            }
+        }
+
+        if (false == isSpace) {
+            // Always paint text with QPointF, instead of QRectF.  Why?  CJK chars will not paint correctly.
+            const qreal y = self.m_textCursorRectF.y() + fontMetricsF.ascent();
+            painter.drawText(QPointF{self.m_textCursorRectF.x(), y}, grapheme);
+        }
+
+        self.m_textCursor->afterPaintEvent();
     }
 };
 
@@ -159,7 +378,7 @@ paintEvent(QPaintEvent* event)  // override
             const qreal x = -1 * horizontalScrollBar()->value();
             // Intentional: drawText() expects y as *bottom* of text line.
             qreal y = fontMetricsF.ascent();
-            const TextViewSelection& selection = m_textCursor->selection();
+            const Private::TextViewSelection textViewSelection = Private::TextViewSelection{*this};
 
             auto visibleLineIndexIter = m_docView->visibleLineBegin() + verticalScrollBar()->value();
             m_firstVisibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
@@ -169,6 +388,7 @@ paintEvent(QPaintEvent* event)  // override
                 m_textCursorRectF = QRectF{};
                 m_textCursorRect = QRect{};
             }
+            // TODO: ADD SUPPORT FOR TEXT FORMATTING
             int visibleLineOffset = 0;
             for ( ; visibleLineOffset < visibleLineCount; ++visibleLineOffset, ++visibleLineIndexIter)
             {
@@ -176,18 +396,49 @@ paintEvent(QPaintEvent* event)  // override
                     break;
                 }
                 const int visibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
-//                TODO: USE SELECTION DATA HERE
-//                if (selection.containsLineIndex(visibleLineIndex)) {
-//                    painter.setBrush(QBrush{QColor{65, 82, 100}});
-//                }
-//                else {
-                    painter.setBrush(QBrush{palette.color(QPalette::ColorRole::Base)});
-//                }
                 const QString& line = textLineVec[visibleLineIndex];
+                const Private::LineSelection lineSelection =
+                    Private::lineSelection(textViewSelection, visibleLineIndex, line);
+
+                // If any selection exists on this line, only paint the background.
+                if (lineSelection.length > 0)
+                {
+                    const QString beforeSelectedText = line.left(lineSelection.beforeLength);
+                    const QString selectedText = line.mid(lineSelection.beforeLength, lineSelection.length);
+
+                    const qreal beforeSelectedWidth = fontMetricsF.horizontalAdvance(beforeSelectedText);
+                    const qreal selectedWidth = fontMetricsF.horizontalAdvance(selectedText);
+
+                    const QRectF& r = QRectF{QPointF{x + beforeSelectedWidth, y - fontMetricsF.ascent()},
+                                             QSizeF{selectedWidth, lineSpacing}};
+
+                    painter.fillRect(r, SELECTED_TEXT_BRUSH);
+
+                    if (lineSelection.isEnd == false)
+                    {
+                        const QString afterSelectedText = line.left(lineSelection.afterLength);
+                        const qreal afterSelectedWidth = fontMetricsF.horizontalAdvance(afterSelectedText);
+                        const qreal x2 = x + beforeSelectedWidth + selectedWidth + afterSelectedWidth;
+
+                        if (viewport()->width() - x2 > 0.0)
+                        {
+                            const QRectF& r = QRectF{QPointF{x2, y - fontMetricsF.ascent()},
+                                                     QSizeF{viewport()->width() - x2, lineSpacing}};
+
+                            painter.fillRect(r, SELECTED_TEXT_BRUSH);
+                        }
+                    }
+                }
+                // From experience, the full line text should be drawn in a single call.  Why?  If we try to draw pieces
+                // and carefully colour the background (for selection, etc.), there will be sub-pixel discrepancies.
+                // If you "look under a microscope" (as I do!), it will drive you crazy.  Each move of the cursor will
+                // shift before-/after-/selected text by sub-pixel horizontal distances.  Insane!
+
                 // From Qt5 docs: "Note: The y-position is used as the baseline of the font."
                 painter.drawText(QPointF{x, y}, line);
+
                 y += lineSpacing;
-                if (visibleLineIndex == m_textCursor->pos().lineIndex && false == m_textCursorRectF.isValid())
+                if (visibleLineIndex == m_textCursor->pos().lineIndex && m_textCursorRectF.isValid() == false)
                 {
                     const qreal x2 = x + fontMetricsF.horizontalAdvance(line, m_textCursor->pos().charIndex);
                     const QString& grapheme = m_textCursor->grapheme();
@@ -203,30 +454,7 @@ paintEvent(QPaintEvent* event)  // override
             }
         }
     }
-    const QString& grapheme = m_textCursor->grapheme();
-    const bool isSpace = (1 == grapheme.length() && grapheme[0].isSpace());
-    // If text cursor is visible, always paint here.
-    if (m_textCursor->isVisible())
-    {
-        painter.fillRect(m_textCursorRectF, QBrush{QColor{Qt::GlobalColor::black}});
-        if (false == isSpace) {
-            painter.setPen(QPen{QColor{Qt::GlobalColor::white}});
-        }
-    }
-    // If text cursor is *not* visible, only re-paint when flagged for update.
-    else if (m_textCursor->isUpdate())
-    {
-        painter.fillRect(m_textCursorRectF, QBrush{palette.color(QPalette::ColorRole::Base)});
-        if (false == isSpace) {
-            painter.setPen(QPen{palette.color(QPalette::ColorRole::Text)});
-        }
-    }
-    if (false == isSpace) {
-        // Always paint text with QPointF, instead of QRectF.  Why?  CJK chars will not paint correctly.
-        const qreal y = m_textCursorRectF.y() + fontMetricsF.ascent();
-        painter.drawText(QPointF{m_textCursorRectF.x(), y}, grapheme);
-    }
-    m_textCursor->afterPaintEvent();
+    Private::paintTextCursor(*this, painter, fontMetricsF, palette);
 }
 
 /**

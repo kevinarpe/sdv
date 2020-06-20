@@ -48,7 +48,27 @@ struct TextViewPosition
 
     void invalidate() { *this = invalid(); }
 
-    bool operator<(const TextViewPosition& rhs) const { return lineIndex < rhs.lineIndex && charIndex < rhs.charIndex; }
+    bool isEqual(const TextViewPosition& rhs) const
+    {
+        const bool x = lineIndex == rhs.lineIndex
+                       && charIndex == rhs.charIndex
+                       && graphemeIndex == rhs.graphemeIndex
+                       && grapheme == rhs.grapheme;
+        return x;
+    }
+
+    bool isLessThan(const TextViewPosition& rhs) const
+    {
+        if (lineIndex < rhs.lineIndex) {
+            return true;
+        }
+        else if (lineIndex == rhs.lineIndex && charIndex < rhs.charIndex) {
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
 
     static TextViewPosition invalid() {
         return TextViewPosition{.lineIndex = -1, .charIndex = -1, .graphemeIndex = -1, .grapheme = QString{}};

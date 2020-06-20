@@ -88,8 +88,6 @@ add_executable(sdv
         src/TextViewTextCursor.h
         src/TextViewPosition.cpp
         src/TextViewPosition.h
-        src/TextViewSelection.cpp
-        src/TextViewSelection.h
         src/GraphemeFinder.cpp
         src/GraphemeFinder.h
         src/TextBoundaryFinder.cpp
