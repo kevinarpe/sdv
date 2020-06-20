@@ -268,7 +268,7 @@ const  // override
 {
     // +1?  Remember: log10 of 150 is 2, not 3. :)
     const qreal digitCount = 1 + std::log10(blockCount());
-    const QFontMetricsF& fontMetricsF = QFontMetricsF(font());
+    const QFontMetricsF fontMetricsF{font()};
     // +1?  Trailing space that is one digit wide.
     const qreal y = (1.0 + digitCount) * fontMetricsF.horizontalAdvance(QLatin1Char{'9'});
     // +0.5?  Truncate correctly: 1.1 -> 1, 1.4 -> 1, 1.5 -> 2, 1.6 -> 2
@@ -297,7 +297,7 @@ lineNumberAreaPaintEvent(QPaintEvent* event)  // override
     qreal top = viewport()->y() + bbgt.top();
     qreal height = bbg.height();
     qreal nextTop = top + height;
-    const QFontMetricsF& fontMetricsF = QFontMetricsF{font()};
+    const QFontMetricsF fontMetricsF{font()};
     const qreal fontHeight = fontMetricsF.height();
     const qreal width = m_lineNumberAreaWidget->width();
     const qreal charWidth = fontMetricsF.horizontalAdvance(QLatin1Char{'9'});

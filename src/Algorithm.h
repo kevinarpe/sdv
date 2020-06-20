@@ -6,6 +6,7 @@
 #define SDV_ALGORITHM_H
 
 #include <cstddef>
+#include <concepts>
 
 namespace SDV {
 
@@ -28,9 +29,13 @@ struct Algorithm
         return -1;
     }
 
+    /**
+     * @param __defaultValue
+     *        Intentional: Value, not (const) reference!  Why?  Reference to temporary is dangerous.
+     */
     template<typename _Container, typename _Value>
     static _Value
-    frontOrDefault(const _Container& __c, _Value __defaultValue)
+    frontOrDefault(const _Container& __c, _Value __defaultValue = _Value{})
     {
         typename _Container::const_iterator __iter = __c.cbegin();
         if (__c.cend() == __iter) {
@@ -42,9 +47,13 @@ struct Algorithm
         }
     }
 
+    /**
+     * @param __defaultValue
+     *        Intentional: Value, not (const) reference!  Why?  Reference to temporary is dangerous.
+     */
     template<typename _Container, typename _Value>
     static _Value
-    backOrDefault(const _Container& __c, _Value __defaultValue)
+    backOrDefault(const _Container& __c, _Value __defaultValue = _Value{})
     {
         typename _Container::const_reverse_iterator __iter = __c.crbegin();
         if (__c.crend() == __iter) {
@@ -55,6 +64,47 @@ struct Algorithm
             return __x;
         }
     }
+
+    // Ref: https://en.cppreference.com/w/cpp/concepts/integral
+    // Ref: https://www.modernescpp.com/index.php/c-core-guidelines-rules-for-the-usage-of-concepts-2
+
+    // Concepts Style A:
+//    template<typename _Integral>
+//    requires std::integral<_Integral>
+
+    // Concepts Style B:
+    template<std::integral _Integral>
+    static _Integral
+    midPointRoundUp(const _Integral __low, const _Integral __high)
+    {
+        assert(__low <= __high);
+        // Integer math always truncates -- round down.
+        const _Integral midPointRoundDown = (__high - __low) / 2;
+        // If width is odd, round up.
+        const _Integral isRangeOdd = (__high - __low) % 2;
+        const _Integral x = midPointRoundDown + isRangeOdd;
+        return x;
+    }
+
+    struct Vector
+    {
+        /**
+         * @param __defaultValue
+         *        Intentional: Value, not (const) reference!  Why?  Reference to temporary is dangerous.
+         */
+        template<typename _Vector, typename _Value>
+        static _Value
+        valueOrDefault(const _Vector& vec, typename _Vector::size_type pos, _Value __defaultValue = _Value{})
+        {
+            if (pos < vec.size()) {
+                const _Value& x = vec[pos];
+                return x;
+            }
+            else {
+                return __defaultValue;
+            }
+        }
+    };
 
     struct Map
     {

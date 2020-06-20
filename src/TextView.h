@@ -5,10 +5,9 @@
 #ifndef SDV_TEXTVIEW_H
 #define SDV_TEXTVIEW_H
 
-#include <QAbstractScrollArea>
-#include <QBasicTimer>
-#include <vector>
 #include <memory>
+#include <QAbstractScrollArea>
+#include "GraphemeFinder.h"
 
 namespace SDV {
 
@@ -26,11 +25,25 @@ public:
     ~TextView() override; // = default
 
     void setDoc(const std::shared_ptr<TextViewDocument>& doc);
+
     TextViewTextCursor& textCursor() { return *m_textCursor; }
-    int firstVisibleLineIndex() { return m_firstVisibleLineIndex; }
-    int lastFullyVisibleLineIndex() { return m_lastFullyVisibleLineIndex; }
-    int lastVisibleLineIndex() { return m_lastVisibleLineIndex; }
-    const QRect& textCursorRect() { return m_textCursorRect; }
+    const TextViewTextCursor& textCursor() const { return *m_textCursor; }
+
+    int firstVisibleLineIndex() const { return m_firstVisibleLineIndex; }
+    int lastFullyVisibleLineIndex() const { return m_lastFullyVisibleLineIndex; }
+    int lastVisibleLineIndex() const { return m_lastVisibleLineIndex; }
+
+    const QRect& textCursorRect() const { return m_textCursorRect; }
+
+    int lineIndexForHeight(qreal viewportYCoord) const;
+
+    // TODO: Add: QRectF rectForPosition(const TextViewPosition& pos) const;
+
+    struct Position {
+        int lineIndex;
+        GraphemeFinder::Result grapheme;
+    };
+    Position positionForPoint(const QPointF& viewportPointF, GraphemeFinder::IncludeTextCursor includeTextCursor) const;
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -38,8 +51,9 @@ protected:
 
 private:
     struct Private;
-    std::unique_ptr<TextViewDocumentView> m_docView;
+    std::shared_ptr<TextViewDocumentView> m_docView;
     std::unique_ptr<TextViewTextCursor> m_textCursor;
+    std::unique_ptr<GraphemeFinder> m_graphemeFinder;
     bool m_isAfterSetDoc;
     QRect m_textCursorRect;
     QRectF m_textCursorRectF;

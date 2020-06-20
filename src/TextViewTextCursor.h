@@ -5,16 +5,19 @@
 #ifndef SDV_TEXTVIEWTEXTCURSOR_H
 #define SDV_TEXTVIEWTEXTCURSOR_H
 
+#include <memory>
 #include <QObject>
 #include <QBasicTimer>
 #include <QRect>
 class QKeyEvent;
 class QPaintEvent;
+#include "TextViewSelection.h"
 
 namespace SDV {
 
 class TextView;
 class TextViewDocumentView;
+class TextViewGraphemeCursor;
 
 class TextViewTextCursor : public QObject
 {
@@ -22,10 +25,10 @@ class TextViewTextCursor : public QObject
 
 public:
     using Base = QObject;
-    TextViewTextCursor(TextView& textView, const TextViewDocumentView& docView);
+    TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentView>& docView);
 
 //    enum class DisplayMode { Blinking, Solid };
-
+    void reset();
     /**
      * The default is true.
      *
@@ -41,16 +44,19 @@ public:
      */
     int blinkMillis() const { return m_blinkMillis; }
     /**
+     * This value alternates during each display phase: visible vs invisible.
+     *
      * @return true if the text cursor is visible (solid rectangle)
      */
     bool isVisible() const { return m_isVisible; }
-    int lineIndex() const { return m_lineIndex; }
-    int columnIndex() const { return m_columnIndex; }
-    QChar chr() const;
-    bool eventFilter(QObject* watched, QEvent* event) override;
+    const TextViewPosition& pos() const;
+    const QString& grapheme() const;
+    TextViewSelection selection() const;
+
     bool isUpdate() const { return m_isUpdate; }
     bool hasMoved() const { return m_hasMoved; }
     void afterPaintEvent();
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 public slots:
     /**
@@ -78,27 +84,16 @@ protected:
 private:
     struct Private;
     TextView& m_textView;
-    const TextViewDocumentView& m_docView;
+    std::shared_ptr<TextViewDocumentView> m_docView;
     bool m_isBlinking;
     int m_blinkMillis;
     QBasicTimer m_timer;
     bool m_isVisible;
-    int m_lineIndex;
-    int m_columnIndex;
-    /**
-     * Width (font horizontal advance) of text before cursor.
-     *
-     * When moving up and down, good text editors use min(target, actual) for column index.
-     * Target is only updated for horizontal movement, but not for vertical movement.
-     */
-    qreal m_textBeforeWidth;
-    /**
-     * Width (font horizontal advance) of char under cursor.
-     *
-     * When moving up and down, good text editors use min(target, actual) for column index.
-     * Target is only updated for horizontal movement, but not for vertical movement.
-     */
-    qreal m_chWidth;
+    // Ref: https://stackoverflow.com/a/6089065/257299
+//    std::unique_ptr<TextViewGraphemeCursor> m_graphemeCursor;
+    std::shared_ptr<TextViewGraphemeCursor> m_graphemeCursor;
+    TextSegmentFontWidth m_fontWidth;
+    TextViewPosition m_selectionStartPos;
     bool m_isUpdate;
     bool m_hasMoved;
 };

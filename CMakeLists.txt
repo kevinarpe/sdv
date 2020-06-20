@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.15)
 project(sdv)
 
+# I tried these two env vars, but it did not work for me.
+# export CXX=/usr/bin/g++-10
+# export CC=/usr/bin/gcc-10
+# Ref: https://stackoverflow.com/a/17275650/257299
+set(CMAKE_C_COMPILER /usr/bin/gcc-10 CACHE PATH "" FORCE)
+set(CMAKE_CXX_COMPILER /usr/bin/g++-10 CACHE PATH "" FORCE)
+
 # Ref: https://bytefreaks.net/programming-2/make-building-with-cmake-verbose
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 
@@ -78,6 +85,19 @@ add_executable(sdv
         src/TextViewDocumentView.cpp
         src/TextViewDocumentView.h
         src/TextViewTextCursor.cpp
-        src/TextViewTextCursor.h)
+        src/TextViewTextCursor.h
+        src/TextViewPosition.cpp
+        src/TextViewPosition.h
+        src/TextViewSelection.cpp
+        src/TextViewSelection.h
+        src/GraphemeFinder.cpp
+        src/GraphemeFinder.h
+        src/TextBoundaryFinder.cpp
+        src/TextBoundaryFinder.h
+        src/TextViewGraphemeCursor.cpp
+        src/TextViewGraphemeCursor.h
+        src/TextSegmentFontWidth.cpp
+        src/TextSegmentFontWidth.h
+        )
 
 target_link_libraries(sdv Qt5::Widgets)

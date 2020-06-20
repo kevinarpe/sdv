@@ -11,10 +11,14 @@
 #include "TextView.h"
 #include "TextViewDocument.h"
 #include "TextViewDocumentView.h"
+#include "TextViewGraphemeCursor.h"
 
 namespace SDV {
 
 enum class StopEventPropagation { Yes, No };
+
+static const QString EMPTY_TEXT_LINE{};
+static const QString SPACE_GRAPHEME{QLatin1Char{' '}};
 
 // TODO: Mouse click will move cursor!
 struct TextViewTextCursor::Private
@@ -49,43 +53,59 @@ struct TextViewTextCursor::Private
         self.m_textView.viewport()->update();
     }
 
-    static const QString&
-    getLine(const TextViewTextCursor& self, const int lineIndex)
+    static void
+    updateAfterSelectionChange(TextViewTextCursor& self)
     {
-        const std::vector<QString>& textLineVec = self.m_docView.doc().lineVec();
-        const QString& line = textLineVec.empty() ? QString{} : textLineVec[lineIndex];
+        self.m_textView.viewport()->update();
+    }
+
+    static void
+    clearSelection(TextViewTextCursor& self)
+    {
+        if (self.m_selectionStartPos.isValid())
+        {
+            self.m_selectionStartPos.invalidate();
+            updateAfterSelectionChange(self);
+        }
+    }
+
+    static const QString&
+    getLine(const TextViewTextCursor& self)
+    {
+        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const std::vector<QString>& textLineVec = self.m_docView->doc().lineVec();
+        const QString& line = textLineVec.empty() ? EMPTY_TEXT_LINE : textLineVec[pos.lineIndex];
         return line;
     }
 
     static StopEventPropagation
     keyPressEvent(TextViewTextCursor& self, QKeyEvent* event)
     {
-        const std::vector<QString>& textLineVec = self.m_docView.doc().lineVec();
-        const QString& line = textLineVec.empty() ? QString{} : textLineVec[self.m_lineIndex];
+        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const QString& line = getLine(self);
         // Assume event will match.  If not, flip to No at very bottom.
         StopEventPropagation stopEventPropagation = StopEventPropagation::Yes;
 
         // Qt::Key::Key_Left
         if (event->matches(QKeySequence::StandardKey::MoveToPreviousChar))
         {
-            if (0 == self.m_columnIndex)
+            if (0 == pos.graphemeIndex)
             {
-                const int lineIndex = self.m_docView.nextVisibleLineIndex(self.m_lineIndex, -1);
-                if (lineIndex != self.m_lineIndex)
+                const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.lineIndex, -1);
+                if (lineIndex != pos.lineIndex)
                 {
-                    const QString& prevLine = textLineVec[lineIndex];
-                    self.m_columnIndex = prevLine.length();
-                    horizontalScrollToEnsureVisible(self, prevLine, UpdateWidths::Yes);
-                    self.m_lineIndex = lineIndex;
+                    self.m_graphemeCursor->setLineIndexThenEnd(lineIndex);
+                    horizontalScrollToEnsureVisible(self);
                     verticalScrollToEnsureVisible(self);
-                    self.m_lineIndex = lineIndex;
+                    updateAfterMove(self);
                 }
             }
-            else {  // if (self.m_columnIndex > 0)
-                --self.m_columnIndex;
-                horizontalScrollToEnsureVisible(self, line, UpdateWidths::Yes);
+            else {  // if (self.m_pos.columnIndex > 0)
+                self.m_graphemeCursor->left();
+                horizontalScrollToEnsureVisible(self);
                 updateAfterMove(self);
             }
+            clearSelection(self);
         }
         // TODO: Selection!
         else if (event->matches(QKeySequence::StandardKey::SelectPreviousChar))
@@ -95,23 +115,24 @@ struct TextViewTextCursor::Private
         // Qt::Key::Key_Right
         else if (event->matches(QKeySequence::StandardKey::MoveToNextChar))
         {
-            if (line.length() == self.m_columnIndex)
+            if (self.m_graphemeCursor->isAtEnd())
             {
-                const int lineIndex = self.m_docView.nextVisibleLineIndex(self.m_lineIndex, +1);
-                if (lineIndex != self.m_lineIndex)
+                const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.lineIndex, +1);
+                if (lineIndex != pos.lineIndex)
                 {
-                    self.m_textBeforeWidth = self.m_columnIndex = 0;
+                    self.m_fontWidth.beforeGrapheme = 0;
                     scrollToMin(self.m_textView.horizontalScrollBar());
-                    self.m_lineIndex = lineIndex;
+                    self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
                     verticalScrollToEnsureVisible(self);
                     updateAfterMove(self);
                 }
             }
-            else {  // if (self.m_columnIndex < line.length())
-                ++self.m_columnIndex;
-                horizontalScrollToEnsureVisible(self, line, UpdateWidths::Yes);
+            else {  // if (self.m_pos.columnIndex < line.length())
+                self.m_graphemeCursor->right();
+                horizontalScrollToEnsureVisible(self);
                 updateAfterMove(self);
             }
+            clearSelection(self);
         }
         // Qt::Key::Key_Control + Qt::Key::Key_Left
         else if (event->matches(QKeySequence::StandardKey::MoveToPreviousWord))
@@ -122,7 +143,7 @@ struct TextViewTextCursor::Private
         else if (event->matches(QKeySequence::StandardKey::MoveToNextWord))
         {
             const QRegularExpression rx{"\\b"};
-            const QRegularExpressionMatch& match = rx.match(line, self.m_columnIndex);
+            const QRegularExpressionMatch& match = rx.match(line, pos.charIndex);
             if (match.hasMatch()) {
                 int dummy = 1;
             }
@@ -131,142 +152,123 @@ struct TextViewTextCursor::Private
         else if (event->matches(QKeySequence::StandardKey::MoveToStartOfLine))
         {
             verticalScrollToEnsureVisible(self);
-            if (0 != self.m_columnIndex)
+            if (0 != pos.graphemeIndex)
             {
-                self.m_textBeforeWidth = self.m_columnIndex = 0;
+                self.m_fontWidth.beforeGrapheme = 0;
+                self.m_graphemeCursor->home();
                 scrollToMin(self.m_textView.horizontalScrollBar());
                 updateAfterMove(self);
             }
+            clearSelection(self);
         }
         // Qt::Key::Key_End
         else if (event->matches(QKeySequence::StandardKey::MoveToEndOfLine))
         {
             verticalScrollToEnsureVisible(self);
-            if (line.length() != self.m_columnIndex)
+            if (false == self.m_graphemeCursor->isAtEnd())
             {
-                self.m_columnIndex = line.length();
-                horizontalScrollToEnsureVisible(self, line, UpdateWidths::Yes);
+                self.m_graphemeCursor->end();
+                horizontalScrollToEnsureVisible(self);
                 updateAfterMove(self);
             }
+            clearSelection(self);
         }
         // Qt::Key::Key_Control + Qt::Key::Key_Home
         else if (event->matches(QKeySequence::StandardKey::MoveToStartOfDocument))
         {
             verticalScrollToEnsureVisible(self);
-            const int lineIndex = self.m_docView.firstVisibleLineIndex();
+            const int lineIndex = self.m_docView->firstVisibleLineIndex();
 
-            if (lineIndex != self.m_lineIndex || 0 != self.m_columnIndex)
+            if (lineIndex != pos.lineIndex || 0 != pos.graphemeIndex)
             {
-                self.m_lineIndex = lineIndex;
-                self.m_textBeforeWidth = self.m_columnIndex = 0;
+                self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
+                self.m_fontWidth.beforeGrapheme = 0;
                 scrollToMin(self.m_textView.horizontalScrollBar());
                 scrollToMin(self.m_textView.verticalScrollBar());
                 updateAfterMove(self);
             }
+            clearSelection(self);
         }
         // Qt::Key::Key_Control + Qt::Key::Key_End
         else if (event->matches(QKeySequence::StandardKey::MoveToEndOfDocument))
         {
             verticalScrollToEnsureVisible(self);
-            const int lineIndex = self.m_docView.lastVisibleLineIndex();
-            const QString& lastLine = getLine(self, lineIndex);
+            const int lineIndex = self.m_docView->lastVisibleLineIndex();
 
-            if (lineIndex != self.m_lineIndex || lastLine.length() != self.m_columnIndex)
+            if (lineIndex != pos.lineIndex || self.m_graphemeCursor->isAtEnd() == false)
             {
-                self.m_lineIndex = lineIndex;
-                self.m_columnIndex = lastLine.length();
-                horizontalScrollToEnsureVisible(self, line, UpdateWidths::Yes);
+                self.m_graphemeCursor->setLineIndexThenEnd(lineIndex);
+                horizontalScrollToEnsureVisible(self);
                 scrollToMax(self.m_textView.verticalScrollBar());
                 updateAfterMove(self);
             }
+            clearSelection(self);
         }
         // Qt::Key::Key_Up
         else if (event->matches(QKeySequence::StandardKey::MoveToPreviousLine))
         {
-            const int lineIndex = self.m_docView.nextVisibleLineIndex(self.m_lineIndex, -1);
-            if (lineIndex == self.m_lineIndex) {
+            const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.lineIndex, -1);
+            verticalScrollToEnsureVisible(self);
+            if (lineIndex != pos.lineIndex)
+            {
+                verticalMove(self, lineIndex);
                 verticalScrollToEnsureVisible(self);
             }
-            else {
-                self.m_lineIndex = lineIndex;
-                verticalScrollToEnsureVisible(self);
-                setColumnIndexAfterVerticalMove(self);
-                updateAfterMove(self);
-            }
+            clearSelection(self);
         }
         // Qt::Key::Key_Down
         else if (event->matches(QKeySequence::StandardKey::MoveToNextLine))
         {
-            const int lineIndex = self.m_docView.nextVisibleLineIndex(self.m_lineIndex, +1);
-            if (lineIndex == self.m_lineIndex) {
+            const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.lineIndex, +1);
+            verticalScrollToEnsureVisible(self);
+            if (lineIndex != pos.lineIndex)
+            {
+                verticalMove(self, lineIndex);
                 verticalScrollToEnsureVisible(self);
             }
-            else {
-                self.m_lineIndex = lineIndex;
-                verticalScrollToEnsureVisible(self);
-                setColumnIndexAfterVerticalMove(self);
-                updateAfterMove(self);
-            }
+            clearSelection(self);
         }
         // Qt::Key::Key_PageUp
         else if (event->matches(QKeySequence::StandardKey::MoveToPreviousPage))
         {
             const int fullyVisibleLineCount = self.m_textView.verticalScrollBar()->pageStep();
             const int lineIndex =
-                self.m_docView.nextVisibleLineIndex(self.m_lineIndex, -1 * fullyVisibleLineCount);
+                self.m_docView->nextVisibleLineIndex(pos.lineIndex, -1 * fullyVisibleLineCount);
 
             verticalScrollToEnsureVisible(self);
 
-            if (lineIndex != self.m_lineIndex)
+            if (lineIndex != pos.lineIndex)
             {
                 scrollPage(self.m_textView.verticalScrollBar(), ScrollDirection::Up);
-                self.m_lineIndex = lineIndex;
-                setColumnIndexAfterVerticalMove(self);
-                updateAfterMove(self);
+                verticalMove(self, lineIndex);
             }
+            clearSelection(self);
         }
         // Qt::Key::Key_PageDown
         else if (event->matches(QKeySequence::StandardKey::MoveToNextPage))
         {
             const int fullyVisibleLineCount = self.m_textView.verticalScrollBar()->pageStep();
-            const int lineIndex = self.m_docView.nextVisibleLineIndex(self.m_lineIndex, fullyVisibleLineCount);
+            const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.lineIndex, fullyVisibleLineCount);
             verticalScrollToEnsureVisible(self);
 
-            if (lineIndex != self.m_lineIndex)
+            if (lineIndex != pos.lineIndex)
             {
                 scrollPage(self.m_textView.verticalScrollBar(), ScrollDirection::Down);
-                self.m_lineIndex = lineIndex;
-                setColumnIndexAfterVerticalMove(self);
-                updateAfterMove(self);
+                verticalMove(self, lineIndex);
             }
+            clearSelection(self);
         }
         else {
             // See: bool QKeyEvent::matches(QKeySequence::StandardKey matchKey) const
             // "The keypad and group switch modifier should not make a difference"
             const uint searchkey = (event->modifiers() | event->key()) & ~(Qt::KeypadModifier | Qt::GroupSwitchModifier);
-            if (searchkey == (Qt::Modifier::ALT | Qt::Key::Key_Home))
+            if (searchkey == (Qt::Modifier::CTRL | Qt::Key::Key_PageUp))
             {
-                verticalScrollToEnsureVisible(self);
-                const int lineIndex = self.m_docView.firstVisibleLineIndex();
-
-                if (lineIndex != self.m_lineIndex)
-                {
-                    self.m_lineIndex = lineIndex;
-                    scrollToMin(self.m_textView.verticalScrollBar());
-                    updateAfterMove(self);
-                }
+                // TODO: Move to first visible line in viewport
             }
-            else if (searchkey == (Qt::Modifier::ALT | Qt::Key::Key_End))
+            else if (searchkey == (Qt::Modifier::CTRL | Qt::Key::Key_PageDown))
             {
-                verticalScrollToEnsureVisible(self);
-                const int lineIndex = self.m_docView.lastVisibleLineIndex();
-
-                if (lineIndex != self.m_lineIndex)
-                {
-                    self.m_lineIndex = lineIndex;
-                    scrollToMax(self.m_textView.verticalScrollBar());
-                    updateAfterMove(self);
-                }
+                // TODO: Move to last (fully) visible line in viewport -- no scrolling!
             }
             // THIS IS TOUGH TO IMPL! :P
 //            else if (searchkey == (Qt::Modifier::ALT | Qt::Key::Key_PageUp))
@@ -279,6 +281,7 @@ struct TextViewTextCursor::Private
 //                    scrollToValue(hbar, v);
 //                    updateAfterMove(self);
 //                }
+//                clearSelection(self);
 //            }
 //            else if (searchkey == (Qt::Modifier::ALT | Qt::Key::Key_PageDown))
 //            {
@@ -290,8 +293,10 @@ struct TextViewTextCursor::Private
 //                    scrollToValue(hbar, v);
 //                    updateAfterMove(self);
 //                }
+//                clearSelection(self);
 //            }
-            else {
+//            else
+            {
                 stopEventPropagation = StopEventPropagation::No;
             }
         }
@@ -299,97 +304,72 @@ struct TextViewTextCursor::Private
     }
 
     static void
-    verticalScrollToEnsureVisible(TextViewTextCursor& self)
+    verticalMove(TextViewTextCursor& self, const int lineIndex)
     {
-        if (self.m_lineIndex < self.m_textView.firstVisibleLineIndex())
+        // Important: Copy, not const ref here, as setLineIndexThenHome() will update the const ref!
+        const TextViewPosition origPos = self.m_graphemeCursor->pos();
+        assert(lineIndex != origPos.lineIndex);
+        self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
+        const QString& line = getLine(self);
+        if (0 == origPos.charIndex || line.isEmpty())
         {
-            scrollToLineIndex(self, self.m_lineIndex);
-        }
-        else if (self.m_lineIndex > self.m_textView.lastFullyVisibleLineIndex())
-        {
-            QScrollBar* const vbar = self.m_textView.verticalScrollBar();
-            const int vbarValue = std::max(0, self.m_lineIndex - (vbar->pageStep() - 1));
-            scrollToLineIndex(self, vbarValue);
-        }
-    }
-
-    static void
-    setColumnIndexAfterVerticalMove(TextViewTextCursor& self)
-    {
-        if (0 == self.m_columnIndex) {
             scrollToMin(self.m_textView.horizontalScrollBar());
-            return;
-        }
-        const std::vector<QString>& textLineVec = self.m_docView.doc().lineVec();
-        const QString& line = textLineVec[self.m_lineIndex];
-        if (line.isEmpty())
-        {
-            self.m_columnIndex = 0;
-            horizontalScrollToEnsureVisible(self, line, UpdateWidths::No);
         }
         else {
-            const QFontMetricsF fmf{self.m_textView.font()};
-            int low = 0;
-            int high = line.length();
-            const qreal prevWidth = self.m_textBeforeWidth + 0.5 * self.m_chWidth;
-            qreal width = 0;
-            while (low < high) {
-                const int len = midPointRoundUp(low, high);
-                const QString& s = line.mid(low, len);
-                const qreal w = fmf.horizontalAdvance(s);
-                if (width + w < prevWidth) {
-                    width += w;
-                    low += len;
-                }
-                // Remember: When comparing qreals, operator== is unsafe.
-                else {  // if (w + width >= prevWidth)
-                    high = low + (len - 1);
-                }
-            }
-            self.m_columnIndex = low;
-            horizontalScrollToEnsureVisible(self, line, UpdateWidths::No);
+            const QFontMetricsF fontMetricsF{self.m_textView.font()};
+            const qreal fontWidthF = self.m_fontWidth.beforeGrapheme + (0.5 * self.m_fontWidth.grapheme);
+            const TextSegmentFontWidth fontWidth = self.m_graphemeCursor->horizontalMove(fontMetricsF, fontWidthF);
+            horizontalScrollToEnsureVisible(self, fontWidth);
+            // Intentional: Do not call verticalScrollToEnsureVisible() here.  It will break PageUp/Down. :)
         }
+        updateAfterMove(self);
     }
-
-    /**
-     * Ex: low=0, high=4, mid=2
-     * Ex: low=0, high=5, mid=3
-     * Ex: low=3, high=4, mid=1
-     * Ex: low=4, high=5, mid=1
-     */
-    inline static int
-    midPointRoundUp(const int low, const int high)
-    {
-        // Integer math always truncates -- round down.
-        const int midPointRoundDown = (high - low) / 2;
-        // If width is odd, round up.
-        const int isWidthOdd = (high - low) % 2;
-        const int x = midPointRoundDown + isWidthOdd;
-        return x;
-    }
-
-    enum class UpdateWidths { Yes, No };
 
     static void
-    horizontalScrollToEnsureVisible(TextViewTextCursor& self, const QString& line, UpdateWidths updateWidths)
+    horizontalScrollToEnsureVisible(TextViewTextCursor& self)
     {
-        const QFontMetricsF fmf{self.m_textView.font()};
-        const qreal x = fmf.horizontalAdvance(line, self.m_columnIndex);
-        const QChar ch = (self.m_columnIndex < line.length()) ? line[self.m_columnIndex] : QLatin1Char{' '};
-        const qreal chWidth = fmf.horizontalAdvance(ch);
+        const QString& line = getLine(self);
+        const QFontMetricsF fontMetricsF{self.m_textView.font()};
+        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        self.m_fontWidth.beforeGrapheme = fontMetricsF.horizontalAdvance(line, pos.charIndex);
+        self.m_fontWidth.grapheme = fontMetricsF.horizontalAdvance(pos.grapheme);
+        horizontalScrollToEnsureVisible(self, self.m_fontWidth);
+    }
+
+    static void
+    horizontalScrollToEnsureVisible(TextViewTextCursor& self, const TextSegmentFontWidth& fontWidth)
+    {
         QScrollBar* const hbar = self.m_textView.horizontalScrollBar();
-        if (x < hbar->value()) {
+        if (fontWidth.beforeGrapheme < hbar->value())
+        {
             // scroll left
-            scrollToValue(hbar, x);
+            scrollToValue(hbar, fontWidth.beforeGrapheme);
         }
-        else if (x + chWidth > hbar->value() + self.m_textView.viewport()->width()) {
-            // scroll right
-            const int hbarValue = x + chWidth - self.m_textView.viewport()->width();
-            scrollToValue(hbar, hbarValue);
+        else {
+            const int width = qRound(fontWidth.beforeGrapheme + fontWidth.grapheme);
+            const int viewportWidth = self.m_textView.viewport()->width();
+            if (width > hbar->value() + viewportWidth)
+            {
+                // scroll right
+                const int hbarValue = width - viewportWidth;
+                scrollToValue(hbar, hbarValue);
+            }
         }
-        if (UpdateWidths::Yes == updateWidths) {
-            self.m_textBeforeWidth = x;
-            self.m_chWidth = chWidth;
+    }
+
+    static void
+    verticalScrollToEnsureVisible(TextViewTextCursor& self)
+    {
+        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        if (pos.lineIndex < self.m_textView.firstVisibleLineIndex())
+        {
+            scrollToLineIndex(self, pos.lineIndex);
+        }
+        else if (pos.lineIndex > self.m_textView.lastFullyVisibleLineIndex())
+        {
+            QScrollBar* const vbar = self.m_textView.verticalScrollBar();
+            const int vbarValue = std::max(0, pos.lineIndex - (vbar->pageStep() - 1));
+            scrollToLineIndex(self, vbarValue);
         }
     }
 
@@ -434,7 +414,7 @@ struct TextViewTextCursor::Private
     static void
     scrollToLineIndex(const TextViewTextCursor& self, const int lineIndex)
     {
-        const int normalisedLineIndex = self.m_docView.findNormalisedLineIndex(lineIndex);
+        const int normalisedLineIndex = self.m_docView->findNormalisedLineIndex(lineIndex);
         scrollToValue(self.m_textView.verticalScrollBar(), normalisedLineIndex);
     }
 
@@ -483,11 +463,46 @@ struct TextViewTextCursor::Private
             startTimer(self);
         }
     }
+
+    // Do not forget Shift+LeftMouseButton will do an "instant" selection!
+    static StopEventPropagation
+    mousePressEvent(TextViewTextCursor& self, QMouseEvent* event)
+    {
+        if (Qt::MouseButton::LeftButton == event->button())
+        {
+            if (Qt::KeyboardModifier::ShiftModifier == QGuiApplication::keyboardModifiers()) {
+                self.m_selectionStartPos = self.m_graphemeCursor->pos();
+            }
+            const StopEventPropagation x = mouseMoveEvent(self, event);
+            assert(StopEventPropagation::Yes == x);
+            return x;
+        }
+        return StopEventPropagation::No;
+    }
+
+    static StopEventPropagation
+    mouseMoveEvent(TextViewTextCursor& self, QMouseEvent* event)
+    {
+        // event->button(): "Note that the returned value is always Qt::NoButton for mouse move events."
+        const int lineIndex = self.m_textView.lineIndexForHeight(event->pos().y());
+        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        if (lineIndex != pos.lineIndex) {
+            self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
+        }
+        const QFontMetricsF fontMetricsF{self.m_textView.font()};
+        const TextSegmentFontWidth fontWidth = self.m_graphemeCursor->horizontalMove(fontMetricsF, event->pos().x());
+        self.m_fontWidth = fontWidth;
+        horizontalScrollToEnsureVisible(self, fontWidth);
+        verticalScrollToEnsureVisible(self);
+        updateAfterMove(self);
+        return StopEventPropagation::Yes;
+    }
+    // Intentional: There is no need to capture mouseReleaseEvent for LeftButton.
 };
 
 // public
 TextViewTextCursor::
-TextViewTextCursor(TextView& textView, const TextViewDocumentView& docView)
+TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentView>& docView)
     : Base{&textView},
       m_textView{textView},
       m_docView{docView},
@@ -495,9 +510,10 @@ TextViewTextCursor(TextView& textView, const TextViewDocumentView& docView)
       m_isBlinking{false},
       m_blinkMillis{qApp->cursorFlashTime()},
       m_isVisible{true},
-      m_lineIndex{0},
-      m_columnIndex{0},
-      m_textBeforeWidth{0},
+//      m_graphemeCursor{std::make_unique<TextViewGraphemeCursor>(docView)},
+      m_graphemeCursor{std::make_shared<TextViewGraphemeCursor>(docView)},
+      m_fontWidth{TextSegmentFontWidth{.beforeGrapheme = 0, .grapheme = 0}},
+      m_selectionStartPos{TextViewPosition::invalid()},
       m_isUpdate{false},
       m_hasMoved{false}
 {
@@ -515,26 +531,52 @@ TextViewTextCursor(TextView& textView, const TextViewDocumentView& docView)
 }
 
 // public
-QChar
+void
 TextViewTextCursor::
-chr()
+reset()
+{
+    m_graphemeCursor->reset();
+}
+
+// public
+const TextViewPosition&
+TextViewTextCursor::
+pos()
 const
 {
-    // TODO: Cache into new data member?
-    const std::vector<QString>& textLineVec = m_docView.doc().lineVec();
-    if (textLineVec.empty()) {
-        return QLatin1Char{' '};
-    }
-    else {
-        const QString& line = textLineVec[m_lineIndex];
-        if (m_columnIndex >= line.size()) {
-            return QLatin1Char{' '};
-        }
-        else {
-            const QChar x = line[m_columnIndex];
-            return x;
-        }
-    }
+    return m_graphemeCursor->pos();
+}
+
+// public
+const QString&
+TextViewTextCursor::
+grapheme()
+const
+{
+    const QString& x = m_graphemeCursor->pos().grapheme;
+    return x;
+}
+
+// public
+TextViewSelection
+TextViewTextCursor::
+selection()
+const
+{
+    const TextViewSelection x{
+        .beginInclusive = std::min(m_selectionStartPos, m_graphemeCursor->pos()),
+        .endExclusive = std::max(m_selectionStartPos, m_graphemeCursor->pos())
+    };
+    return x;
+}
+
+// public
+void
+TextViewTextCursor::
+afterPaintEvent()
+{
+    m_isUpdate = false;
+    m_hasMoved = false;
 }
 
 /**
@@ -563,18 +605,17 @@ eventFilter(QObject* watched, QEvent* event)  // override
             Private::focusOutEvent(*this, static_cast<QFocusEvent*>(event));
             break;
         }
+        case QEvent::Type::MouseButtonPress: {
+            const StopEventPropagation x = Private::mousePressEvent(*this, static_cast<QMouseEvent*>(event));
+            return (StopEventPropagation::Yes == x);
+        }
+        case QEvent::Type::MouseMove: {
+            const StopEventPropagation x = Private::mouseMoveEvent(*this, static_cast<QMouseEvent*>(event));
+            return (StopEventPropagation::Yes == x);
+        }
     }
     // Intentional: Never block processing by intended target.
     return false;
-}
-
-// public
-void
-TextViewTextCursor::
-afterPaintEvent()
-{
-    m_isUpdate = false;
-    m_hasMoved = false;
 }
 
 // public slot

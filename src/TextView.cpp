@@ -14,6 +14,7 @@
 #include "TextViewDocument.h"
 #include "TextViewDocumentView.h"
 #include "TextViewTextCursor.h"
+#include "Algorithm.h"
 
 namespace SDV {
 
@@ -36,8 +37,9 @@ struct TextView::Private
 TextView::
 TextView(QWidget* parent /*= nullptr*/)
     : Base{parent},
-      m_docView{std::make_unique<TextViewDocumentView>()},
-      m_textCursor{std::make_unique<TextViewTextCursor>(*this, *m_docView)},
+      m_docView{std::make_shared<TextViewDocumentView>()},
+      m_textCursor{std::make_unique<TextViewTextCursor>(*this, m_docView)},
+      m_graphemeFinder{std::make_unique<GraphemeFinder>()},
       m_isAfterSetDoc{false},
       m_firstVisibleLineIndex{-1}, m_lastFullyVisibleLineIndex{-1}, m_lastVisibleLineIndex{-1}
 {}
@@ -53,8 +55,44 @@ TextView::
 setDoc(const std::shared_ptr<TextViewDocument>& doc)
 {
     m_docView->setDoc(doc);
+    m_textCursor->reset();
     m_isAfterSetDoc = true;
     viewport()->update();
+}
+
+// public
+int
+TextView::
+lineIndexForHeight(const qreal viewportYCoord)
+const
+{
+    const QFontMetricsF fontMetricsF{font()};
+    const qreal lineSpacing = fontMetricsF.lineSpacing();
+    const qreal stepCountF = viewportYCoord / lineSpacing;
+    // truncate (round down)
+    const int stepCount = static_cast<int>(stepCountF);
+    // lineIndex <= m_lastVisibleLineIndex
+    const int lineIndex = m_docView->nextVisibleLineIndex(m_firstVisibleLineIndex, stepCount);
+    return lineIndex;
+}
+
+// public
+//TextViewPosition
+TextView::Position
+TextView::
+positionForPoint(const QPointF& viewportPointF, GraphemeFinder::IncludeTextCursor includeTextCursor)
+const
+{
+    const int lineIndex = lineIndexForHeight(viewportPointF.y());
+    const QString& line =
+        Algorithm::Vector::valueOrDefault(m_docView->doc().lineVec(), lineIndex, QString{});
+
+    const QFontMetricsF fontMetricsF{font()};
+    const GraphemeFinder::Result r =
+        m_graphemeFinder->positionForFontWidth(line, fontMetricsF, viewportPointF.x(), includeTextCursor);
+
+    const Position& x = Position{.lineIndex = lineIndex, .grapheme = r};
+    return x;
 }
 
 // protected
@@ -65,7 +103,7 @@ paintEvent(QPaintEvent* event)  // override
     // Intentional: Do not call Base.  The impl is empty.
 //    Base::paintEvent(event);
 
-    const QFontMetricsF& fontMetricsF = QFontMetricsF{font()};
+    const QFontMetricsF fontMetricsF{font()};
     const qreal lineSpacing = fontMetricsF.lineSpacing();
     const std::vector<QString>& textLineVec = m_docView->doc().lineVec();
     if (m_isAfterSetDoc)
@@ -121,6 +159,7 @@ paintEvent(QPaintEvent* event)  // override
             const qreal x = -1 * horizontalScrollBar()->value();
             // Intentional: drawText() expects y as *bottom* of text line.
             qreal y = fontMetricsF.ascent();
+            const TextViewSelection& selection = m_textCursor->selection();
 
             auto visibleLineIndexIter = m_docView->visibleLineBegin() + verticalScrollBar()->value();
             m_firstVisibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
@@ -137,15 +176,22 @@ paintEvent(QPaintEvent* event)  // override
                     break;
                 }
                 const int visibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
+//                TODO: USE SELECTION DATA HERE
+//                if (selection.containsLineIndex(visibleLineIndex)) {
+//                    painter.setBrush(QBrush{QColor{65, 82, 100}});
+//                }
+//                else {
+                    painter.setBrush(QBrush{palette.color(QPalette::ColorRole::Base)});
+//                }
                 const QString& line = textLineVec[visibleLineIndex];
                 // From Qt5 docs: "Note: The y-position is used as the baseline of the font."
                 painter.drawText(QPointF{x, y}, line);
                 y += lineSpacing;
-                if (visibleLineIndex == m_textCursor->lineIndex() && false == m_textCursorRectF.isValid())
+                if (visibleLineIndex == m_textCursor->pos().lineIndex && false == m_textCursorRectF.isValid())
                 {
-                    const qreal x2 = x + fontMetricsF.horizontalAdvance(line, m_textCursor->columnIndex());
-                    const QChar& ch = m_textCursor->chr();
-                    const qreal width = fontMetricsF.horizontalAdvance(ch);
+                    const qreal x2 = x + fontMetricsF.horizontalAdvance(line, m_textCursor->pos().charIndex);
+                    const QString& grapheme = m_textCursor->grapheme();
+                    const qreal width = fontMetricsF.horizontalAdvance(grapheme);
                     const qreal y2 = lineSpacing * visibleLineOffset;
                     m_textCursorRectF = QRectF{QPointF{x2, y2}, QSizeF{width, lineSpacing}};
                     m_textCursorRect = m_textCursorRectF.toRect();
@@ -157,8 +203,8 @@ paintEvent(QPaintEvent* event)  // override
             }
         }
     }
-    const QChar& ch = m_textCursor->chr();
-    const bool isSpace = ch.isSpace();
+    const QString& grapheme = m_textCursor->grapheme();
+    const bool isSpace = (1 == grapheme.length() && grapheme[0].isSpace());
     // If text cursor is visible, always paint here.
     if (m_textCursor->isVisible())
     {
@@ -178,7 +224,7 @@ paintEvent(QPaintEvent* event)  // override
     if (false == isSpace) {
         // Always paint text with QPointF, instead of QRectF.  Why?  CJK chars will not paint correctly.
         const qreal y = m_textCursorRectF.y() + fontMetricsF.ascent();
-        painter.drawText(QPointF{m_textCursorRectF.x(), y}, ch);
+        painter.drawText(QPointF{m_textCursorRectF.x(), y}, grapheme);
     }
     m_textCursor->afterPaintEvent();
 }
@@ -203,7 +249,7 @@ resizeEvent(QResizeEvent* event)  // override
     const int heightDiff = event->size().height() - std::max(0, event->oldSize().height());
     if (0 != heightDiff)
     {
-        const QFontMetricsF& fontMetricsF = QFontMetricsF{font()};
+        const QFontMetricsF fontMetricsF{font()};
         // static_cast<int> will discard the final line if partially visible.
         const int fullyVisibleLineCount = static_cast<int>(event->size().height() / fontMetricsF.lineSpacing());
         QScrollBar* const vbar = verticalScrollBar();
