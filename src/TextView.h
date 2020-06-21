@@ -25,10 +25,13 @@ public:
     ~TextView() override; // = default
 
     void setDoc(const std::shared_ptr<TextViewDocument>& doc);
+    const TextViewDocumentView& docView() const { return *m_docView; }
 
     TextViewTextCursor& textCursor() { return *m_textCursor; }
     const TextViewTextCursor& textCursor() const { return *m_textCursor; }
 
+    int fullyVisibleLineCount() const { return m_fullyVisibleLineCount; }
+    int visibleLineCount() const { return m_visibleLineCount; }
     int firstVisibleLineIndex() const { return m_firstVisibleLineIndex; }
     int lastFullyVisibleLineIndex() const { return m_lastFullyVisibleLineIndex; }
     int lastVisibleLineIndex() const { return m_lastVisibleLineIndex; }
@@ -36,14 +39,19 @@ public:
     const QRect& textCursorRect() const { return m_textCursorRect; }
 
     int lineIndexForHeight(qreal viewportYCoord) const;
+    // TODO: Add?: QRectF rectForLine(int visibleLineIndex) const;
+    // TODO: Add?: QRectF rectForPosition(const TextViewPosition& pos) const;
 
-    // TODO: Add: QRectF rectForPosition(const TextViewPosition& pos) const;
-
-    struct Position {
+    struct Position
+    {
         int lineIndex;
         GraphemeFinder::Result grapheme;
     };
-    Position positionForPoint(const QPointF& viewportPointF, GraphemeFinder::IncludeTextCursor includeTextCursor) const;
+    Position positionForPoint(const QPointF& viewportPointF,
+                              GraphemeFinder::IncludeTextCursor includeTextCursor) const;
+
+signals:
+    void signalVisibleLineIndicesChanged();
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -55,8 +63,14 @@ private:
     std::unique_ptr<TextViewTextCursor> m_textCursor;
     std::unique_ptr<GraphemeFinder> m_graphemeFinder;
     bool m_isAfterSetDoc;
+    /**
+     * Intentional: Store two copies of text cursor rect.  Why?  QWidget::update(QRect) only accept QRect.
+     * <br>However, when we actually paint, we use QRectF for sub-pixel accuracy.  :)
+     */
     QRect m_textCursorRect;
     QRectF m_textCursorRectF;
+    int m_fullyVisibleLineCount;
+    int m_visibleLineCount;
     int m_firstVisibleLineIndex;
     int m_lastFullyVisibleLineIndex;
     int m_lastVisibleLineIndex;

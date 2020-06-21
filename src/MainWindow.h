@@ -6,7 +6,6 @@
 #define SDV_MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QTextCharFormat>
 #include "MainWindowManagerToken.h"
 #include "Constants.h"
 #include "TextFormat.h"
@@ -19,6 +18,7 @@ class StatusBar;
 //class TabWidget;
 class TextWidget;
 class TextView;
+class TextViewLineNumberArea;
 
 class MainWindow : public QMainWindow
 {
@@ -57,6 +57,7 @@ private:
 //    TabWidget* m_tabWidget;
     TextWidget* m_textWidget;
     TextView* m_textView;
+    TextViewLineNumberArea* m_textViewLineNumberArea;
     // RAII guarantees when '*this' is destroyed, mainWindowManagerToken will also be destroyed.
     MainWindowManagerToken m_mainWindowManagerToken;
     QAction* m_fileCloseAction;

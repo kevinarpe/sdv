@@ -26,15 +26,17 @@ static const QString EMPTY_TEXT_LINE{};
 struct TextViewTextCursor::Private
 {
     static void
-    slotHorizontalScrollBarActionTriggered(TextViewTextCursor& self, QAbstractSlider::SliderAction action)
+    slotHorizontalScrollBarActionTriggered(TextViewTextCursor& self,
+                                           const QAbstractSlider::SliderAction action)
     {
-        updateAfterMove(self);
+        update(self);
     }
 
     static void
-    slotVerticalScrollBarActionTriggered(TextViewTextCursor& self, QAbstractSlider::SliderAction action)
+    slotVerticalScrollBarActionTriggered(TextViewTextCursor& self,
+                                         const QAbstractSlider::SliderAction action)
     {
-        updateAfterMove(self);
+        update(self);
     }
 
     static const QString&
@@ -94,20 +96,20 @@ struct TextViewTextCursor::Private
             {
                 const QRegularExpression rx{"\\b"};
                 verticalScrollToEnsureVisible(self);
-                const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+                const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
                 const std::vector<QString>& textLineVec = self.m_docView->doc().lineVec();
-                const auto iter0 = self.m_docView->find(pos.pos.lineIndex);
+                const auto iter0 = self.m_docView->find(origPos.pos.lineIndex);
                 const auto end = self.m_docView->visibleLineEnd();
-                assert(end != iter0);
+
                 for (auto iter = iter0 ; end != iter ; ++iter)
                 {
                     const int lineIndex = *iter;
                     const QString& line = textLineVec[lineIndex];
-                    const int charIndex = (iter0 == iter) ? pos.pos.charIndex : 0;
+                    const int charIndex = (iter0 == iter) ? origPos.pos.charIndex : 0;
                     const QRegularExpressionMatch& match = rx.match(line, 1 + charIndex);
                     if (match.hasMatch())
                     {
-                        if (lineIndex != pos.pos.lineIndex)
+                        if (lineIndex != origPos.pos.lineIndex)
                         {
                             self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
                         }
@@ -116,7 +118,10 @@ struct TextViewTextCursor::Private
                         break;
                     }
                 }
-                updateAfterMove(self);
+                const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+                if (false == origPos.pos.isEqual(pos.pos)) {
+                    updateAfterMove(self);
+                }
             }
         }
         // Qt::Key::Key_Shift + Qt::Key::Key_Control + Qt::Key::Key_Right
@@ -273,10 +278,17 @@ struct TextViewTextCursor::Private
     }
 
     static void
-    update(TextViewTextCursor& self)
+    updateCursorOnly(TextViewTextCursor& self)
     {
         self.m_isUpdate = true;
         self.m_textView.viewport()->update(self.m_textView.textCursorRect());
+    }
+
+    static void
+    update(TextViewTextCursor& self)
+    {
+        self.m_isUpdate = true;
+        self.m_textView.viewport()->update();
     }
 
     static void
@@ -288,6 +300,7 @@ struct TextViewTextCursor::Private
         // It is weird UX to have the cursor blinking when moving the cursor.
         show(self);
         self.m_textView.viewport()->update();
+        emit self.signalPositionChanged();
     }
 
     /* Ex: &moveLeft */
@@ -309,7 +322,7 @@ struct TextViewTextCursor::Private
         if (self.m_selection.isValid())
         {
             self.m_selection.invalidate();
-            updateAfterMove(self);
+            update(self);
         }
     }
 
@@ -545,6 +558,7 @@ struct TextViewTextCursor::Private
     static void
     selectAll(TextViewTextCursor& self)
     {
+        const TextViewSelection origSelection = self.m_selection;
         const std::vector<QString>& lineVec = self.m_docView->doc().lineVec();
         if (lineVec.empty())
         {
@@ -587,14 +601,16 @@ struct TextViewTextCursor::Private
                 }
             }
         }
-        updateAfterMove(self);
+        if (false == origSelection.isEqual(self.m_selection))
+        {
+            update(self);
+        }
     }
 
     static void
     deselect(TextViewTextCursor& self)
     {
-        self.m_selection.invalidate();
-        updateAfterMove(self);
+        clearSelection(self);
     }
 
     static void
@@ -725,7 +741,7 @@ struct TextViewTextCursor::Private
         {
             startTimer(self);
             self.m_isVisible = true;
-            update(self);
+            updateCursorOnly(self);
         }
     }
 
@@ -736,7 +752,7 @@ struct TextViewTextCursor::Private
         {
             self.m_timer.stop();
             self.m_isVisible = true;
-            update(self);
+            updateCursorOnly(self);
         }
     }
 
@@ -766,6 +782,9 @@ struct TextViewTextCursor::Private
                 const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
                 self.m_selection.begin = pos.pos;
             }
+            else {
+                clearSelection(self);
+            }
             const StopEventPropagation x = mouseMoveEvent(self, event);
             assert(StopEventPropagation::Yes == x);
             return x;
@@ -777,17 +796,22 @@ struct TextViewTextCursor::Private
     mouseMoveEvent(TextViewTextCursor& self, QMouseEvent* event)
     {
         // event->button(): "Note that the returned value is always Qt::NoButton for mouse move events."
+        const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
         const int lineIndex = self.m_textView.lineIndexForHeight(event->pos().y());
-        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
-        if (lineIndex != pos.pos.lineIndex) {
+        if (lineIndex != origPos.pos.lineIndex)
+        {
             self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
         }
         const QFontMetricsF fontMetricsF{self.m_textView.font()};
         const TextSegmentFontWidth fontWidth = self.m_graphemeCursor->horizontalMove(fontMetricsF, event->pos().x());
-        self.m_fontWidth = fontWidth;
-        horizontalScrollToEnsureVisible(self, fontWidth);
-        verticalScrollToEnsureVisible(self);
-        updateAfterMove(self);
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        if (false == origPos.pos.isEqual(pos.pos))
+        {
+            self.m_fontWidth = fontWidth;
+            horizontalScrollToEnsureVisible(self, fontWidth);
+            verticalScrollToEnsureVisible(self);
+            updateAfterMove(self);
+        }
         return StopEventPropagation::Yes;
     }
     // Intentional: There is no need to capture mouseReleaseEvent for LeftButton.
@@ -834,7 +858,7 @@ reset()
 // public
 const TextViewGraphemePosition&
 TextViewTextCursor::
-pos()
+position()
 const
 {
     const TextViewGraphemePosition& x = m_graphemeCursor->pos();
@@ -934,7 +958,7 @@ timerEvent(QTimerEvent* event)  // override
 
     if (event->timerId() == m_timer.timerId()) {
         m_isVisible = ! m_isVisible;
-        Private::update(*this);
+        Private::updateCursorOnly(*this);
     }
 }
 

@@ -20,6 +20,7 @@
 #include "PrettyWriter2.h"
 #include "QTextBoundaryFinders.h"
 #include "TextView.h"
+#include "TextViewLineNumberArea.h"
 #include "TextViewDocument.h"
 #include "TextViewTextCursor.h"
 
@@ -476,14 +477,25 @@ MainWindow(MainWindowManager& mainWindowManager,
       m_statusBar{new StatusBar{this}},
 //      m_tabWidget{new TabWidget{this}},
       m_textWidget{new TextWidget{this}},
-      m_textView{new TextView{this}},
       m_mainWindowManagerToken{mainWindowManager.add(*this)},
       m_isClosing{false}
 {
     setAttribute(Qt::WidgetAttribute::WA_DeleteOnClose);
     setWindowTitle(WINDOW_TITLE);
 //    setCentralWidget(m_textWidget);
-    setCentralWidget(m_textView);
+    {
+        QWidget* centralWidget = new QWidget{this};
+        m_textView = new TextView{centralWidget};
+        m_textViewLineNumberArea = new TextViewLineNumberArea{*m_textView, centralWidget};
+
+        QHBoxLayout* hboxLayout = new QHBoxLayout{};
+        hboxLayout->setContentsMargins(0, 0, 0, 0);
+        hboxLayout->setSpacing(0);
+        hboxLayout->addWidget(m_textViewLineNumberArea);
+        hboxLayout->addWidget(m_textView);
+        centralWidget->setLayout(hboxLayout);
+        setCentralWidget(centralWidget);
+    }
     setAcceptDrops(true);
     setStatusBar(m_statusBar);
     m_statusBar->textViewLabel()->setTextFormat(Qt::TextFormat::RichText);

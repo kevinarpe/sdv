@@ -40,6 +40,9 @@ public:
      */
     int findNormalisedLineIndex(int lineIndex) const;
 
+    /** May return visibleLineEnd() */
+    const_iterator tryFind(int lineIndex) const;
+    /** assert(false) if not found */
     const_iterator find(int lineIndex) const;
 
 private:

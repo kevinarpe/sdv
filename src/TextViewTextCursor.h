@@ -56,7 +56,7 @@ public:
      * @return true if the text cursor is visible (solid rectangle)
      */
     bool isVisible() const { return m_isVisible; }
-    const TextViewGraphemePosition& pos() const;
+    const TextViewGraphemePosition& position() const;
     const TextViewSelection& selection() const { return m_selection; }
     bool isUpdate() const { return m_isUpdate; }
     bool hasMoved() const { return m_hasMoved; }
@@ -82,6 +82,9 @@ public slots:
      * @see blinkMillis()
      */
     void slotSetBlinkMillis(int millis);
+
+signals:
+    void signalPositionChanged();
 
 protected:
     void timerEvent(QTimerEvent* event) override;

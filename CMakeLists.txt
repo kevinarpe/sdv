@@ -99,6 +99,12 @@ add_executable(sdv
         src/TextViewSelection.cpp
         src/TextViewSelection.h
         src/TextViewPosition.cpp
-        src/TextViewPosition.h)
+        src/TextViewPosition.h
+        src/TextViewLineTextFormat.cpp
+        src/TextViewLineTextFormat.h
+        src/TextViewTextFormat.cpp
+        src/TextViewTextFormat.h
+        src/TextViewLineNumberArea.cpp
+        src/TextViewLineNumberArea.h)
 
 target_link_libraries(sdv Qt5::Widgets)

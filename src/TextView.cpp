@@ -25,6 +25,17 @@ static const QBrush SELECTED_TEXT_BRUSH{QColor{166, 210, 255}};
 // private
 struct TextView::Private
 {
+    static void
+    updateVisibleLineCounts(TextView& self)
+    {
+        const QFontMetricsF fontMetricsF{self.font()};
+        const qreal lineSpacing = fontMetricsF.lineSpacing();
+        // static_cast<int> will discard the final line if partially visible.
+        self.m_fullyVisibleLineCount = static_cast<int>(self.viewport()->height() / lineSpacing);
+        // Includes final line if partially visible.
+        self.m_visibleLineCount = std::ceil(self.viewport()->height() / lineSpacing);
+    }
+
     static qreal
     maxLineWidth(const TextView& self, const QFontMetricsF& fontMetricsF)
     {
@@ -216,7 +227,7 @@ struct TextView::Private
     static void
     paintTextCursor(TextView& self, QPainter& painter, const QFontMetricsF& fontMetricsF, const QPalette& palette)
     {
-        const TextViewGraphemePosition& pos = self.m_textCursor->pos();
+        const TextViewGraphemePosition& pos = self.m_textCursor->position();
         const bool isEndOfLine = isTextCursorEndOfLine(self);
 
         // If text cursor is visible, always paint here.
@@ -262,7 +273,7 @@ struct TextView::Private
         if (lineVec.empty()) {
             return true;
         }
-        const TextViewGraphemePosition& pos = self.m_textCursor->pos();
+        const TextViewGraphemePosition& pos = self.m_textCursor->position();
         const QString& line = lineVec[pos.pos.lineIndex];
         const bool x = line.length() == pos.pos.charIndex;
         return x;
@@ -277,7 +288,8 @@ TextView(QWidget* parent /*= nullptr*/)
       m_textCursor{std::make_unique<TextViewTextCursor>(*this, m_docView)},
       m_graphemeFinder{std::make_unique<GraphemeFinder>()},
       m_isAfterSetDoc{false},
-      m_firstVisibleLineIndex{-1}, m_lastFullyVisibleLineIndex{-1}, m_lastVisibleLineIndex{-1}
+      m_fullyVisibleLineCount{0}, m_visibleLineCount{0},
+      m_firstVisibleLineIndex{0}, m_lastFullyVisibleLineIndex{0}, m_lastVisibleLineIndex{0}
 {}
 
 // Intentional: Impl here b/c of forward decls in header.
@@ -316,7 +328,8 @@ const
 //TextViewPosition
 TextView::Position
 TextView::
-positionForPoint(const QPointF& viewportPointF, GraphemeFinder::IncludeTextCursor includeTextCursor)
+positionForPoint(const QPointF& viewportPointF,
+                 GraphemeFinder::IncludeTextCursor includeTextCursor)
 const
 {
     const int lineIndex = lineIndexForHeight(viewportPointF.y());
@@ -341,6 +354,7 @@ paintEvent(QPaintEvent* event)  // override
 
     const QFontMetricsF fontMetricsF{font()};
     const qreal lineSpacing = fontMetricsF.lineSpacing();
+    // TODO: Can this be moved inside resizeEvent()?  setDoc() should only reset h/v values to zero.
     if (m_isAfterSetDoc)
     {
         m_isAfterSetDoc = false;
@@ -372,11 +386,8 @@ paintEvent(QPaintEvent* event)  // override
         {
             m_firstVisibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = -1;
         }
+        // TODO: Add basic context menu with copy/Ctrl+C, select all/Ctrl+A, deselect/Ctrl+Shift+A
         else {
-            // TODO: Create another class TextViewTextCursorView to track the *display* of TextViewTextCursor.
-            // Why?  Decouple display logic.  Example: PageUp/Down tries to keep cursor in the same relative
-            // location before and after move.
-
             // static_cast<int> will discard the final line if partially visible.
             const int fullyVisibleLineCount = static_cast<int>(viewport()->height() / lineSpacing);
             // Includes final line if partially visible.
@@ -398,6 +409,9 @@ paintEvent(QPaintEvent* event)  // override
             const std::vector<QString>& lineVec = m_docView->doc().lineVec();
 
             auto visibleLineIndexIter = m_docView->visibleLineBegin() + verticalScrollBar()->value();
+            const int first = m_firstVisibleLineIndex;
+            const int lastFull = m_lastFullyVisibleLineIndex;
+            const int last = m_lastVisibleLineIndex;
             m_firstVisibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
 
             if (m_textCursor->hasMoved()) {
@@ -455,7 +469,7 @@ paintEvent(QPaintEvent* event)  // override
                 painter.drawText(QPointF{x, y}, line);
                 y += lineSpacing;
 
-                const TextViewGraphemePosition& pos = m_textCursor->pos();
+                const TextViewGraphemePosition& pos = m_textCursor->position();
                 if (visibleLineIndex == pos.pos.lineIndex && m_textCursorRectF.isValid() == false)
                 {
                     const qreal x2 = x + fontMetricsF.horizontalAdvance(line, pos.pos.charIndex);
@@ -468,6 +482,10 @@ paintEvent(QPaintEvent* event)  // override
             // Only adjust if we have a "full view": visibleLineCount == i
             if (visibleLineCount == visibleLineOffset && visibleLineCount > fullyVisibleLineCount) {
                 --m_lastFullyVisibleLineIndex;
+            }
+            if (first != m_firstVisibleLineIndex || lastFull != m_lastFullyVisibleLineIndex || last != m_lastVisibleLineIndex)
+            {
+                emit signalVisibleLineIndicesChanged();
             }
         }
     }
@@ -501,6 +519,7 @@ resizeEvent(QResizeEvent* event)  // override
         vbar->setPageStep(fullyVisibleLineCount);
         const int pageStepDiff = fullyVisibleLineCount - vbar->pageStep();
         vbar->setMaximum(vbar->maximum() + pageStepDiff);
+        Private::updateVisibleLineCounts(*this);
     }
     // Tricky: event->oldSize() can be -1 on first resize.
     const int widthDiff = event->size().width() - std::max(0, event->oldSize().width());

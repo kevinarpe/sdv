@@ -26,6 +26,12 @@ struct TextViewSelection
         end.invalidate();
     }
 
+    bool isEqual(const TextViewSelection& rhs) const
+    {
+        const bool x = (begin.isEqual(rhs.begin) && end.isEqual(rhs.end));
+        return x;
+    }
+
     static TextViewSelection invalid()
     {
         return TextViewSelection{.begin = TextViewPosition::invalid(), .end = TextViewPosition::invalid()};

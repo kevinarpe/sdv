@@ -124,10 +124,21 @@ const
 // public
 TextViewDocumentView::const_iterator
 TextViewDocumentView::
+tryFind(const int lineIndex)
+const
+{
+    const auto iter = Private::cfind(*this, lineIndex);
+    return iter;
+}
+
+// public
+TextViewDocumentView::const_iterator
+TextViewDocumentView::
 find(const int lineIndex)
 const
 {
-    auto iter = Private::cfind(*this, lineIndex);
+    const auto iter = tryFind(lineIndex);
+    assert(m_visibleLineIndexVec.end() != iter);
     return iter;
 }
 
