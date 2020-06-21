@@ -5,8 +5,8 @@ project(sdv)
 # export CXX=/usr/bin/g++-10
 # export CC=/usr/bin/gcc-10
 # Ref: https://stackoverflow.com/a/17275650/257299
-set(CMAKE_C_COMPILER /usr/bin/gcc-10 CACHE PATH "" FORCE)
-set(CMAKE_CXX_COMPILER /usr/bin/g++-10 CACHE PATH "" FORCE)
+#set(CMAKE_C_COMPILER /usr/bin/gcc-10 CACHE PATH "" FORCE)
+#set(CMAKE_CXX_COMPILER /usr/bin/g++-10 CACHE PATH "" FORCE)
 
 # Ref: https://bytefreaks.net/programming-2/make-building-with-cmake-verbose
 #set(CMAKE_VERBOSE_MAKEFILE ON)
@@ -86,8 +86,8 @@ add_executable(sdv
         src/TextViewDocumentView.h
         src/TextViewTextCursor.cpp
         src/TextViewTextCursor.h
-        src/TextViewPosition.cpp
-        src/TextViewPosition.h
+        src/TextViewGraphemePosition.cpp
+        src/TextViewGraphemePosition.h
         src/GraphemeFinder.cpp
         src/GraphemeFinder.h
         src/TextBoundaryFinder.cpp
@@ -97,6 +97,8 @@ add_executable(sdv
         src/TextSegmentFontWidth.cpp
         src/TextSegmentFontWidth.h
         src/TextViewSelection.cpp
-        src/TextViewSelection.h)
+        src/TextViewSelection.h
+        src/TextViewPosition.cpp
+        src/TextViewPosition.h)
 
 target_link_libraries(sdv Qt5::Widgets)

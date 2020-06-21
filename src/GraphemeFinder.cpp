@@ -4,12 +4,9 @@
 
 #include "GraphemeFinder.h"
 #include "TextBoundaryFinder.h"
+#include "TextViewTextCursor.h"
 
 namespace SDV {
-
-static const QChar SPACE_CHAR{QLatin1Char{' '}};
-/** Used for end of line cursor */
-static const QString SPACE_GRAPHEME{SPACE_CHAR};
 
 // public
 GraphemeFinder::
@@ -53,10 +50,10 @@ positionForFontWidth(TextBoundaryFinder* const finder,
         {
             if (IncludeTextCursor::Yes == includeTextCursor)
             {
-                const qreal graphemeWidth = fontMetricsF.horizontalAdvance(SPACE_CHAR);
+                const qreal graphemeWidth = fontMetricsF.horizontalAdvance(TextViewTextCursor::SPACE_CHAR);
                 const Result& x = Result{.charIndex = graphemeBeginIndex,
                     .graphemeIndex = graphemeIndex,
-                    .grapheme = SPACE_GRAPHEME,
+                    .grapheme = TextViewTextCursor::SPACE_GRAPHEME,
                     .fontWidth = TextSegmentFontWidth{.beforeGrapheme = width, .grapheme = graphemeWidth}};
                 return x;
             }

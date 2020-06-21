@@ -6,13 +6,11 @@
 #include "TextViewDocumentView.h"
 #include "TextViewDocument.h"
 #include "GraphemeFinder.h"
+#include "TextViewTextCursor.h"
 
 namespace SDV {
 
 static const QString EMPTY_TEXT_LINE{};
-static const QChar SPACE_CHAR{QLatin1Char{' '}};
-/** Used for end of line cursor */
-static const QString SPACE_GRAPHEME{SPACE_CHAR};
 
 struct TextViewGraphemeCursor::Private
 {
@@ -22,19 +20,20 @@ struct TextViewGraphemeCursor::Private
     {
         const int graphemeLength = graphemeEndIndex - graphemeBeginIndex;
         assert(1 == graphemeLength || 2 == graphemeLength);
-        self.m_pos.grapheme = line.mid(graphemeBeginIndex, graphemeLength);
+        const QString& grapheme = line.mid(graphemeBeginIndex, graphemeLength);
+        self.m_pos.grapheme = grapheme;
     }
 
     static void
     home(TextViewGraphemeCursor& self)
     {
-        self.m_pos.charIndex = self.m_pos.graphemeIndex = 0;
         self.m_graphemeFinder.toStart();
+        self.m_pos.pos.charIndex = self.m_pos.graphemeIndex = 0;
 
         const int graphemeEndIndex = self.m_graphemeFinder.toNextBoundary();
         // Empty line
         if (-1 == graphemeEndIndex) {
-            self.m_pos.grapheme = SPACE_GRAPHEME;
+            self.m_pos.grapheme = TextViewTextCursor::SPACE_GRAPHEME;
         }
         else {
             const QString& line = self.textLine();
@@ -47,8 +46,8 @@ struct TextViewGraphemeCursor::Private
     {
         const QString& line = self.textLine();
 
-        self.m_pos.charIndex = line.length();
-        self.m_pos.grapheme = SPACE_GRAPHEME;
+        self.m_pos.pos.charIndex = line.length();
+        self.m_pos.grapheme = TextViewTextCursor::SPACE_GRAPHEME;
 
         while (true) {
             const int b = self.m_graphemeFinder.toNextBoundary();
@@ -59,7 +58,7 @@ struct TextViewGraphemeCursor::Private
         }
         // "End" is special.  Text cursor is one position beyond last char in text line.
         self.m_pos.graphemeIndex++;
-        assert(self.m_pos.graphemeIndex <= self.m_pos.charIndex);
+        assert(self.m_pos.graphemeIndex <= self.m_pos.pos.charIndex);
     }
 };
 
@@ -68,14 +67,14 @@ void
 TextViewGraphemeCursor::
 reset()
 {
-    m_pos.lineIndex = m_pos.charIndex = m_pos.graphemeIndex = 0;
-    m_pos.grapheme = SPACE_GRAPHEME;
+    m_pos.pos.lineIndex = m_pos.pos.charIndex = m_pos.graphemeIndex = 0;
+    m_pos.grapheme = TextViewTextCursor::SPACE_GRAPHEME;
     const QString& line = textLine();
 
     if (line.isEmpty())
     {
         m_graphemeFinder.reset(QTextBoundaryFinder::BoundaryType::Grapheme, QString{});
-        m_pos.grapheme = SPACE_GRAPHEME;
+        m_pos.grapheme = TextViewTextCursor::SPACE_GRAPHEME;
     }
     else {
         m_graphemeFinder.reset(QTextBoundaryFinder::BoundaryType::Grapheme, line);
@@ -94,11 +93,11 @@ const
 {
     assert(m_pos.isValid());
     const std::vector<QString>& lineVec = m_docView->doc().lineVec();
-    if (0 == m_pos.lineIndex && lineVec.empty()) {
+    if (0 == m_pos.pos.lineIndex && lineVec.empty()) {
         return EMPTY_TEXT_LINE;
     }
     else {
-        const QString& x = lineVec[m_pos.lineIndex];
+        const QString& x = lineVec[m_pos.pos.lineIndex];
         return x;
     }
 }
@@ -108,7 +107,7 @@ void
 TextViewGraphemeCursor::
 left()
 {
-    assert(m_pos.charIndex > 0);
+    assert(m_pos.pos.charIndex > 0);
     const QString& line = textLine();
 
     const int graphemeEndIndex = m_graphemeFinder.position();
@@ -118,7 +117,7 @@ left()
     assert(-1 != graphemeBeginIndex);
 
     // If not text cursor at end of line...
-    if (m_pos.charIndex < line.length())
+    if (m_pos.pos.charIndex < line.length())
     {
         graphemeBeginIndex = m_graphemeFinder.toPreviousBoundary();
         assert(-1 != graphemeBeginIndex);
@@ -127,7 +126,7 @@ left()
     const int graphemeEndIndex2 = m_graphemeFinder.toNextBoundary();
     assert(-1 != graphemeEndIndex2);
 
-    m_pos.charIndex = graphemeBeginIndex;
+    m_pos.pos.charIndex = graphemeBeginIndex;
     m_pos.graphemeIndex--;
     assert(m_pos.graphemeIndex >= 0);
     Private::setGrapheme(*this, line, graphemeBeginIndex, graphemeEndIndex2);
@@ -136,28 +135,60 @@ left()
 // public
 void
 TextViewGraphemeCursor::
+setCharIndex(const int charIndex)
+{
+    // Eh.  Not so efficient!
+    if (charIndex <= m_pos.pos.charIndex)
+    {
+        m_graphemeFinder.toStart();
+        m_pos.graphemeIndex = 0;
+    }
+    const int p = m_graphemeFinder.position();
+    if (p < charIndex)
+    {
+        while (true) {
+            const int b = m_graphemeFinder.toNextBoundary();
+            assert(-1 != b);
+            assert(b <= charIndex);
+            if (b == charIndex) {
+                break;
+            }
+            m_pos.graphemeIndex++;
+        }
+    }
+    m_pos.pos.charIndex = charIndex;
+    const int graphemeBeginIndex = m_graphemeFinder.position();
+    const int graphemeEndIndex = m_graphemeFinder.toNextBoundary();
+    assert(-1 != graphemeEndIndex);
+    const QString& line = textLine();
+    Private::setGrapheme(*this, line, graphemeBeginIndex, graphemeEndIndex);
+}
+
+// public
+void
+TextViewGraphemeCursor::
 right()
 {
     const QString& line = textLine();
-    assert(m_pos.charIndex < line.length());
+    assert(m_pos.pos.charIndex < line.length());
 
     if (m_graphemeFinder.position() == line.length())
     {
-        m_pos.charIndex++;
-        m_pos.grapheme = SPACE_GRAPHEME;
+        m_pos.pos.charIndex++;
+        m_pos.grapheme = TextViewTextCursor::SPACE_GRAPHEME;
     }
     else {
         const int graphemeBeginIndex = m_graphemeFinder.position();
-        assert(graphemeBeginIndex == m_pos.charIndex + m_pos.grapheme.length());
+        assert(graphemeBeginIndex == m_pos.pos.charIndex + m_pos.grapheme.length());
 
         const int graphemeEndIndex = m_graphemeFinder.toNextBoundary();
         assert(-1 != graphemeEndIndex);
 
-        m_pos.charIndex = graphemeBeginIndex;
+        m_pos.pos.charIndex = graphemeBeginIndex;
         Private::setGrapheme(*this, line, graphemeBeginIndex, graphemeEndIndex);
     }
     m_pos.graphemeIndex++;
-    assert(m_pos.graphemeIndex <= m_pos.charIndex);
+    assert(m_pos.graphemeIndex <= m_pos.pos.charIndex);
 }
 
 // public
@@ -165,7 +196,7 @@ void
 TextViewGraphemeCursor::
 home()
 {
-    assert(m_pos.charIndex > 0);
+    assert(m_pos.pos.charIndex > 0);
     Private::home(*this);
 }
 
@@ -175,7 +206,7 @@ TextViewGraphemeCursor::
 end()
 {
     const QString& line = textLine();
-    assert(m_pos.charIndex < line.length());
+    assert(m_pos.pos.charIndex < line.length());
     Private::end(*this);
 }
 
@@ -184,8 +215,8 @@ void
 TextViewGraphemeCursor::
 setLineIndexThenHome(const int lineIndex)
 {
-    assert(lineIndex != m_pos.lineIndex);
-    m_pos.lineIndex = lineIndex;
+    assert(lineIndex != m_pos.pos.lineIndex);
+    m_pos.pos.lineIndex = lineIndex;
     const QString& line = textLine();
     m_graphemeFinder.reset(QTextBoundaryFinder::BoundaryType::Grapheme, line);
     Private::home(*this);
@@ -212,7 +243,7 @@ horizontalMove(const QFontMetricsF& fontMetricsF, const qreal fontWidth)
         GraphemeFinder::positionForFontWidth(
             &m_graphemeFinder, line, fontMetricsF, fontWidth, GraphemeFinder::IncludeTextCursor::Yes);
 
-    m_pos.charIndex = r.charIndex;
+    m_pos.pos.charIndex = r.charIndex;
     m_pos.graphemeIndex = r.graphemeIndex;
     m_pos.grapheme = r.grapheme;
     return r.fontWidth;

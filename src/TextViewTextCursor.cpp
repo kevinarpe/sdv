@@ -15,10 +15,13 @@
 
 namespace SDV {
 
-enum class StopEventPropagation { Yes, No };
+// public static
+const QChar TextViewTextCursor::SPACE_CHAR{QLatin1Char{' '}};
+// public static
+const QString TextViewTextCursor::SPACE_GRAPHEME{SPACE_CHAR};
 
+enum class StopEventPropagation { Yes, No };
 static const QString EMPTY_TEXT_LINE{};
-static const QString SPACE_GRAPHEME{QLatin1Char{' '}};
 
 struct TextViewTextCursor::Private
 {
@@ -37,16 +40,16 @@ struct TextViewTextCursor::Private
     static const QString&
     getLine(const TextViewTextCursor& self)
     {
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
         const std::vector<QString>& textLineVec = self.m_docView->doc().lineVec();
-        const QString& line = textLineVec.empty() ? EMPTY_TEXT_LINE : textLineVec[pos.lineIndex];
+        const QString& line = textLineVec.empty() ? EMPTY_TEXT_LINE : textLineVec[pos.pos.lineIndex];
         return line;
     }
 
     static StopEventPropagation
     keyPressEvent(TextViewTextCursor& self, QKeyEvent* event)
     {
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
         // Assume event will match.  If not, flip to No at very bottom.
         StopEventPropagation stopEventPropagation = StopEventPropagation::Yes;
 
@@ -77,16 +80,50 @@ struct TextViewTextCursor::Private
             // TODO
             int dummy = 1;
         }
+        // Qt::Key::Key_Shift + Qt::Key::Key_Control + Qt::Key::Key_Left
+        else if (event->matches(QKeySequence::StandardKey::SelectPreviousWord))
+        {
+            // TODO
+            int dummy = 1;
+        }
         // Qt::Key::Key_Control + Qt::Key::Key_Right
         else if (event->matches(QKeySequence::StandardKey::MoveToNextWord))
         {
-            // TODO
-            const QRegularExpression rx{"\\b"};
-            const QString& line = getLine(self);
-            const QRegularExpressionMatch& match = rx.match(line, pos.charIndex);
-            if (match.hasMatch()) {
-                int dummy = 1;
+            // Next/Prev word seems "broken" in IntelliJ.  Think more deeply about this first!
+            if (false)
+            {
+                const QRegularExpression rx{"\\b"};
+                verticalScrollToEnsureVisible(self);
+                const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+                const std::vector<QString>& textLineVec = self.m_docView->doc().lineVec();
+                const auto iter0 = self.m_docView->find(pos.pos.lineIndex);
+                const auto end = self.m_docView->visibleLineEnd();
+                assert(end != iter0);
+                for (auto iter = iter0 ; end != iter ; ++iter)
+                {
+                    const int lineIndex = *iter;
+                    const QString& line = textLineVec[lineIndex];
+                    const int charIndex = (iter0 == iter) ? pos.pos.charIndex : 0;
+                    const QRegularExpressionMatch& match = rx.match(line, 1 + charIndex);
+                    if (match.hasMatch())
+                    {
+                        if (lineIndex != pos.pos.lineIndex)
+                        {
+                            self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
+                        }
+                        const int charIndex = match.capturedStart();
+                        self.m_graphemeCursor->setCharIndex(charIndex);
+                        break;
+                    }
+                }
+                updateAfterMove(self);
             }
+        }
+        // Qt::Key::Key_Shift + Qt::Key::Key_Control + Qt::Key::Key_Right
+        else if (event->matches(QKeySequence::StandardKey::SelectNextWord))
+        {
+            // TODO
+            int dummy = 1;
         }
         // Qt::Key::Key_Home
         else if (event->matches(QKeySequence::StandardKey::MoveToStartOfLine))
@@ -253,10 +290,13 @@ struct TextViewTextCursor::Private
         self.m_textView.viewport()->update();
     }
 
+    /* Ex: &moveLeft */
+    using MoveFunc = bool (*)(TextViewTextCursor& self);
+
     static void
-    move(TextViewTextCursor& self, bool (*doMove)(TextViewTextCursor& self))
+    move(TextViewTextCursor& self, MoveFunc moveFunc)
     {
-        if (doMove(self))
+        if (moveFunc(self))
         {
             updateAfterMove(self);
             clearSelection(self);
@@ -274,24 +314,25 @@ struct TextViewTextCursor::Private
     }
 
     static void
-    moveSelect(TextViewTextCursor& self, bool (*doMove)(TextViewTextCursor& self))
+    moveSelect(TextViewTextCursor& self, MoveFunc moveFunc)
     {
         // Intentional: Copy not reference!
-        const TextViewPosition origPos = self.m_graphemeCursor->pos();
-        if (doMove(self))
+        const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
+        if (moveFunc(self))
         {
+            const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
             if (self.m_selection.begin.isValid())
             {
                 // Forward or backward selection cross-over
-                if (self.m_graphemeCursor->pos().isEqual(self.m_selection.begin))
+                if (pos.pos.isEqual(self.m_selection.begin))
                 {
                     self.m_selection.begin.invalidate();
                 }
             }
             else {
-                self.m_selection.begin = origPos;
+                self.m_selection.begin = origPos.pos;
             }
-            self.m_selection.end = self.m_graphemeCursor->pos();
+            self.m_selection.end = pos.pos;
             updateAfterMove(self);
         }
     }
@@ -299,11 +340,11 @@ struct TextViewTextCursor::Private
     static bool
     moveLeft(TextViewTextCursor& self)
     {
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
         if (0 == pos.graphemeIndex)
         {
-            const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.lineIndex, -1);
-            if (lineIndex != pos.lineIndex)
+            const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.pos.lineIndex, -1);
+            if (lineIndex != pos.pos.lineIndex)
             {
                 self.m_graphemeCursor->setLineIndexThenEnd(lineIndex);
                 horizontalScrollToEnsureVisible(self);
@@ -322,11 +363,11 @@ struct TextViewTextCursor::Private
     static bool
     moveRight(TextViewTextCursor& self)
     {
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
         if (self.m_graphemeCursor->isAtEnd())
         {
-            const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.lineIndex, +1);
-            if (lineIndex != pos.lineIndex)
+            const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.pos.lineIndex, +1);
+            if (lineIndex != pos.pos.lineIndex)
             {
                 self.m_fontWidth.beforeGrapheme = 0;
                 scrollToMin(self.m_textView.horizontalScrollBar());
@@ -347,7 +388,7 @@ struct TextViewTextCursor::Private
     moveHome(TextViewTextCursor& self)
     {
         verticalScrollToEnsureVisible(self);
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
 
         if (0 != pos.graphemeIndex)
         {
@@ -377,9 +418,9 @@ struct TextViewTextCursor::Private
     {
         verticalScrollToEnsureVisible(self);
         const int lineIndex = self.m_docView->firstVisibleLineIndex();
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
 
-        if (lineIndex != pos.lineIndex || 0 != pos.graphemeIndex)
+        if (lineIndex != pos.pos.lineIndex || 0 != pos.graphemeIndex)
         {
             self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
             self.m_fontWidth.beforeGrapheme = 0;
@@ -395,9 +436,9 @@ struct TextViewTextCursor::Private
     {
         verticalScrollToEnsureVisible(self);
         const int lineIndex = self.m_docView->lastVisibleLineIndex();
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
 
-        if (lineIndex != pos.lineIndex || self.m_graphemeCursor->isAtEnd() == false)
+        if (lineIndex != pos.pos.lineIndex || self.m_graphemeCursor->isAtEnd() == false)
         {
             self.m_graphemeCursor->setLineIndexThenEnd(lineIndex);
             horizontalScrollToEnsureVisible(self);
@@ -411,10 +452,10 @@ struct TextViewTextCursor::Private
     moveUp(TextViewTextCursor& self)
     {
         verticalScrollToEnsureVisible(self);
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
-        const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.lineIndex, -1);
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.pos.lineIndex, -1);
 
-        if (lineIndex != pos.lineIndex)
+        if (lineIndex != pos.pos.lineIndex)
         {
             verticalMove(self, lineIndex);
             verticalScrollToEnsureVisible(self);
@@ -427,10 +468,10 @@ struct TextViewTextCursor::Private
     moveDown(TextViewTextCursor& self)
     {
         verticalScrollToEnsureVisible(self);
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
-        const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.lineIndex, +1);
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.pos.lineIndex, +1);
 
-        if (lineIndex != pos.lineIndex)
+        if (lineIndex != pos.pos.lineIndex)
         {
             verticalMove(self, lineIndex);
             verticalScrollToEnsureVisible(self);
@@ -443,11 +484,11 @@ struct TextViewTextCursor::Private
     movePageUp(TextViewTextCursor& self)
     {
         const int fullyVisibleLineCount = self.m_textView.verticalScrollBar()->pageStep();
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
-        const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.lineIndex, -1 * fullyVisibleLineCount);
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.pos.lineIndex, -1 * fullyVisibleLineCount);
         verticalScrollToEnsureVisible(self);
 
-        if (lineIndex != pos.lineIndex)
+        if (lineIndex != pos.pos.lineIndex)
         {
             scrollPage(self.m_textView.verticalScrollBar(), ScrollDirection::Up);
             verticalMove(self, lineIndex);
@@ -460,11 +501,11 @@ struct TextViewTextCursor::Private
     movePageDown(TextViewTextCursor& self)
     {
         const int fullyVisibleLineCount = self.m_textView.verticalScrollBar()->pageStep();
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
-        const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.lineIndex, fullyVisibleLineCount);
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        const int lineIndex = self.m_docView->nextVisibleLineIndex(pos.pos.lineIndex, fullyVisibleLineCount);
         verticalScrollToEnsureVisible(self);
 
-        if (lineIndex != pos.lineIndex)
+        if (lineIndex != pos.pos.lineIndex)
         {
             scrollPage(self.m_textView.verticalScrollBar(), ScrollDirection::Down);
             verticalMove(self, lineIndex);
@@ -478,9 +519,9 @@ struct TextViewTextCursor::Private
     {
         verticalScrollToEnsureVisible(self);
         const int lineIndex = self.m_textView.firstVisibleLineIndex();
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
 
-        if (lineIndex != pos.lineIndex) {
+        if (lineIndex != pos.pos.lineIndex) {
             verticalMove(self, lineIndex);
             return true;
         }
@@ -492,9 +533,9 @@ struct TextViewTextCursor::Private
     {
         verticalScrollToEnsureVisible(self);
         const int lineIndex = self.m_textView.lastFullyVisibleLineIndex();
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
 
-        if (lineIndex != pos.lineIndex) {
+        if (lineIndex != pos.pos.lineIndex) {
             verticalMove(self, lineIndex);
             return true;
         }
@@ -511,45 +552,29 @@ struct TextViewTextCursor::Private
             self.m_selection.end.invalidate();
         }
         else {
+            // Begin
             {
                 const int firstVisibleLineIndex = self.m_docView->firstVisibleLineIndex();
                 const QString& firstVisibleLine = lineVec[firstVisibleLineIndex];
                 if (firstVisibleLine.isEmpty())
                 {
-                    self.m_selection.begin =
-                        TextViewPosition{
-                            .lineIndex = firstVisibleLineIndex,
-                            .charIndex = 0,
-                            .graphemeIndex = 0,
-                            .grapheme = SPACE_GRAPHEME
-                        };
+                    self.m_selection.begin = TextViewPosition{.lineIndex = firstVisibleLineIndex, .charIndex = 0};
                 }
                 else {
                     QTextBoundaryFinder f{QTextBoundaryFinder::BoundaryType::Grapheme, firstVisibleLine};
                     const int b = f.toNextBoundary();
                     assert(-1 != b);
                     const QString& grapheme = firstVisibleLine.left(b);
-                    self.m_selection.begin =
-                        TextViewPosition{
-                            .lineIndex = firstVisibleLineIndex,
-                            .charIndex = 0,
-                            .graphemeIndex = 0,
-                            .grapheme = grapheme
-                        };
+                    self.m_selection.begin = TextViewPosition{.lineIndex = firstVisibleLineIndex, .charIndex = 0};
                 }
             }
+            // End
             {
                 const int lastVisibleLineIndex = self.m_docView->lastVisibleLineIndex();
                 const QString& lastVisibleLine = lineVec[lastVisibleLineIndex];
                 if (lastVisibleLine.isEmpty())
                 {
-                    self.m_selection.begin =
-                        TextViewPosition{
-                            .lineIndex = lastVisibleLineIndex,
-                            .charIndex = 0,
-                            .graphemeIndex = 0,
-                            .grapheme = SPACE_GRAPHEME
-                        };
+                    self.m_selection.begin = TextViewPosition{.lineIndex = lastVisibleLineIndex, .charIndex = 0};
                 }
                 else {
                     QTextBoundaryFinder f{QTextBoundaryFinder::BoundaryType::Grapheme, lastVisibleLine};
@@ -558,12 +583,7 @@ struct TextViewTextCursor::Private
                         ++graphemeIndex;
                     }
                     self.m_selection.begin =
-                        TextViewPosition{
-                            .lineIndex = lastVisibleLineIndex,
-                            .charIndex = lastVisibleLine.length(),
-                            .graphemeIndex = graphemeIndex,
-                            .grapheme = SPACE_GRAPHEME
-                        };
+                        TextViewPosition{.lineIndex = lastVisibleLineIndex, .charIndex = lastVisibleLine.length()};
                 }
             }
         }
@@ -581,11 +601,11 @@ struct TextViewTextCursor::Private
     verticalMove(TextViewTextCursor& self, const int lineIndex)
     {
         // Important: Copy, not const ref here, as setLineIndexThenHome() will update the const ref!
-        const TextViewPosition origPos = self.m_graphemeCursor->pos();
-        assert(lineIndex != origPos.lineIndex);
+        const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
+        assert(lineIndex != origPos.pos.lineIndex);
         self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
         const QString& line = getLine(self);
-        if (0 == origPos.charIndex || line.isEmpty())
+        if (0 == origPos.pos.charIndex || line.isEmpty())
         {
             scrollToMin(self.m_textView.horizontalScrollBar());
         }
@@ -603,8 +623,8 @@ struct TextViewTextCursor::Private
     {
         const QString& line = getLine(self);
         const QFontMetricsF fontMetricsF{self.m_textView.font()};
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
-        self.m_fontWidth.beforeGrapheme = fontMetricsF.horizontalAdvance(line, pos.charIndex);
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        self.m_fontWidth.beforeGrapheme = fontMetricsF.horizontalAdvance(line, pos.pos.charIndex);
         self.m_fontWidth.grapheme = fontMetricsF.horizontalAdvance(pos.grapheme);
         horizontalScrollToEnsureVisible(self, self.m_fontWidth);
     }
@@ -633,15 +653,15 @@ struct TextViewTextCursor::Private
     static void
     verticalScrollToEnsureVisible(TextViewTextCursor& self)
     {
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
-        if (pos.lineIndex < self.m_textView.firstVisibleLineIndex())
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        if (pos.pos.lineIndex < self.m_textView.firstVisibleLineIndex())
         {
-            scrollToLineIndex(self, pos.lineIndex);
+            scrollToLineIndex(self, pos.pos.lineIndex);
         }
-        else if (pos.lineIndex > self.m_textView.lastFullyVisibleLineIndex())
+        else if (pos.pos.lineIndex > self.m_textView.lastFullyVisibleLineIndex())
         {
             QScrollBar* const vbar = self.m_textView.verticalScrollBar();
-            const int vbarValue = std::max(0, pos.lineIndex - (vbar->pageStep() - 1));
+            const int vbarValue = std::max(0, pos.pos.lineIndex - (vbar->pageStep() - 1));
             scrollToLineIndex(self, vbarValue);
         }
     }
@@ -743,7 +763,8 @@ struct TextViewTextCursor::Private
         {
             if (Qt::KeyboardModifier::ShiftModifier == QGuiApplication::keyboardModifiers())
             {
-                self.m_selection.begin = self.m_graphemeCursor->pos();
+                const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+                self.m_selection.begin = pos.pos;
             }
             const StopEventPropagation x = mouseMoveEvent(self, event);
             assert(StopEventPropagation::Yes == x);
@@ -757,8 +778,8 @@ struct TextViewTextCursor::Private
     {
         // event->button(): "Note that the returned value is always Qt::NoButton for mouse move events."
         const int lineIndex = self.m_textView.lineIndexForHeight(event->pos().y());
-        const TextViewPosition& pos = self.m_graphemeCursor->pos();
-        if (lineIndex != pos.lineIndex) {
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        if (lineIndex != pos.pos.lineIndex) {
             self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
         }
         const QFontMetricsF fontMetricsF{self.m_textView.font()};
@@ -811,22 +832,12 @@ reset()
 }
 
 // public
-const TextViewPosition&
+const TextViewGraphemePosition&
 TextViewTextCursor::
 pos()
 const
 {
-    const TextViewPosition& x = m_graphemeCursor->pos();
-    return x;
-}
-
-// public
-const QString&
-TextViewTextCursor::
-grapheme()
-const
-{
-    const QString& x = m_graphemeCursor->pos().grapheme;
+    const TextViewGraphemePosition& x = m_graphemeCursor->pos();
     return x;
 }
 
@@ -872,6 +883,10 @@ eventFilter(QObject* watched, QEvent* event)  // override
         case QEvent::Type::MouseMove: {
             const StopEventPropagation x = Private::mouseMoveEvent(*this, static_cast<QMouseEvent*>(event));
             return (StopEventPropagation::Yes == x);
+        }
+        default: {
+            // @DebugBreakpoint
+            int dummy = 1;
         }
     }
     // Intentional: Never block processing by intended target.

@@ -1,12 +1,9 @@
 //
-// Created by kca on 14/6/2020.
+// Created by kca on 21/6/2020.
 //
 
 #ifndef SDV_TEXTVIEWPOSITION_H
 #define SDV_TEXTVIEWPOSITION_H
-
-#include <compare>
-#include "GraphemeFinder.h"
 
 namespace SDV {
 
@@ -26,37 +23,18 @@ struct TextViewPosition
      * whereas the emoji character would use QChar indices 0 and 1.
      */
     int charIndex;
-    /**
-     * Zero based logical column index for a visual text editor.
-     *
-     * For example: In the text "😋r", the letter 'r' would have grapheme index 1,
-     * whereas the emoji character would use grapheme index 0.
-     */
-    int graphemeIndex;
-    /**
-     * Always length 1 or 2
-     *
-     * For example: The grapheme "r" has length 1, but the grapheme "😋" has length 2.
-     */
-    QString grapheme;
 
     bool isValid() const
     {
-        const bool x = (lineIndex >= 0 && charIndex >= 0 && graphemeIndex >= 0 && grapheme.length() > 0);
+        const bool x = (lineIndex >= 0 && charIndex >= 0);
         return x;
     }
 
-    void invalidate()
-    {
-        *this = invalid();
-    }
+    void invalidate() { *this = invalid(); }
 
     bool isEqual(const TextViewPosition& rhs) const
     {
-        const bool x = lineIndex == rhs.lineIndex
-                       && charIndex == rhs.charIndex
-                       && graphemeIndex == rhs.graphemeIndex
-                       && grapheme == rhs.grapheme;
+        const bool x = (lineIndex == rhs.lineIndex && charIndex == rhs.charIndex);
         return x;
     }
 
@@ -73,10 +51,7 @@ struct TextViewPosition
         }
     }
 
-    static TextViewPosition invalid()
-    {
-        return TextViewPosition{.lineIndex = -1, .charIndex = -1, .graphemeIndex = -1, .grapheme = QString{}};
-    }
+    static TextViewPosition invalid() { return TextViewPosition{.lineIndex = -1, .charIndex = -1}; }
 };
 
 }  // namespace SDV

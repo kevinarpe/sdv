@@ -6,7 +6,8 @@
 #define SDV_TEXTVIEWGRAPHEMECURSOR_H
 
 #include <memory>
-#include "TextViewPosition.h"
+#include <QFontMetricsF>
+#include "TextViewGraphemePosition.h"
 #include "TextBoundaryFinder.h"
 #include "TextSegmentFontWidth.h"
 
@@ -18,23 +19,24 @@ class TextViewGraphemeCursor
 {
 public:
     explicit TextViewGraphemeCursor(const std::shared_ptr<TextViewDocumentView>& docView)
-        : m_docView{docView}, m_pos{TextViewPosition::invalid()}
+        : m_docView{docView}, m_pos{TextViewGraphemePosition::invalid()}
     {}
 
     void reset();
-    const TextViewPosition& pos() const { return m_pos; }
+    const TextViewGraphemePosition& pos() const { return m_pos; }
     const QString& textLine() const;
 
     bool isAtEnd() const
     {
         const QString& line = textLine();
         const int len = line.length();
-        return len == m_pos.charIndex;
+        return len == m_pos.pos.charIndex;
     }
     void left();
     void right();
     void home();
     void end();
+    void setCharIndex(int charIndex);
     void setLineIndexThenHome(int lineIndex);
     void setLineIndexThenEnd(int lineIndex);
     TextSegmentFontWidth horizontalMove(const QFontMetricsF& fontMetricsF, qreal fontWidth);
@@ -52,7 +54,7 @@ private:
      * When 1 == m_pos.graphemeIndex, 3 == m_graphemeFinder.position().
      */
     TextBoundaryFinder m_graphemeFinder;
-    TextViewPosition m_pos;
+    TextViewGraphemePosition m_pos;
 };
 
 }  // namespace SDV

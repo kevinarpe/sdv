@@ -14,11 +14,11 @@
 #include "TextViewDocument.h"
 #include "TextViewDocumentView.h"
 #include "TextViewTextCursor.h"
+#include "TextViewGraphemePosition.h"
 #include "Algorithm.h"
 
 namespace SDV {
 
-static const QString SPACE_GRAPHEME{QLatin1Char{' '}};
 // Baby blue borrowed from IntelliJ! :)
 static const QBrush SELECTED_TEXT_BRUSH{QColor{166, 210, 255}};
 
@@ -26,8 +26,9 @@ static const QBrush SELECTED_TEXT_BRUSH{QColor{166, 210, 255}};
 struct TextView::Private
 {
     static qreal
-    maxLineWidth(const std::vector<QString>& lineVec, const QFontMetricsF& fontMetricsF)
+    maxLineWidth(const TextView& self, const QFontMetricsF& fontMetricsF)
     {
+        const std::vector<QString>& lineVec = self.m_docView->doc().lineVec();
         qreal x = 0;
         std::for_each(lineVec.begin(), lineVec.end(),
             [&fontMetricsF, &x](const QString& line)
@@ -215,13 +216,14 @@ struct TextView::Private
     static void
     paintTextCursor(TextView& self, QPainter& painter, const QFontMetricsF& fontMetricsF, const QPalette& palette)
     {
-        const QString& grapheme = self.m_textCursor->grapheme();
-        const bool isSpace = (SPACE_GRAPHEME == grapheme);
+        const TextViewGraphemePosition& pos = self.m_textCursor->pos();
+        const bool isEndOfLine = isTextCursorEndOfLine(self);
+
         // If text cursor is visible, always paint here.
         if (self.m_textCursor->isVisible())
         {
             painter.fillRect(self.m_textCursorRectF, QBrush{QColor{Qt::GlobalColor::black}});
-            if (false == isSpace) {
+            if (false == isEndOfLine) {
                 painter.setPen(QPen{QColor{Qt::GlobalColor::white}});
             }
         }
@@ -231,8 +233,7 @@ struct TextView::Private
             const TextViewSelection& selection = self.m_textCursor->selection();
 
             // If selection is backward (right-to-left), then grapheme under text cursor will be selected.
-            const bool isTextCursorSelected =
-                selection.begin.isValid() && self.m_textCursor->pos().isLessThan(selection.begin);
+            const bool isTextCursorSelected = selection.begin.isValid() && pos.pos.isLessThan(selection.begin);
 
             if (isTextCursorSelected) {
                 painter.fillRect(self.m_textCursorRectF, SELECTED_TEXT_BRUSH);
@@ -241,18 +242,30 @@ struct TextView::Private
                 painter.fillRect(self.m_textCursorRectF, QBrush{palette.color(QPalette::ColorRole::Base)});
             }
 
-            if (false == isSpace) {
+            if (false == isEndOfLine) {
                 painter.setPen(QPen{palette.color(QPalette::ColorRole::Text)});
             }
         }
 
-        if (false == isSpace) {
+        if (false == isEndOfLine) {
             // Always paint text with QPointF, instead of QRectF.  Why?  CJK chars will not paint correctly.
             const qreal y = self.m_textCursorRectF.y() + fontMetricsF.ascent();
-            painter.drawText(QPointF{self.m_textCursorRectF.x(), y}, grapheme);
+            painter.drawText(QPointF{self.m_textCursorRectF.x(), y}, pos.grapheme);
         }
-
         self.m_textCursor->afterPaintEvent();
+    }
+
+    static bool
+    isTextCursorEndOfLine(TextView& self)
+    {
+        const std::vector<QString>& lineVec = self.m_docView->doc().lineVec();
+        if (lineVec.empty()) {
+            return true;
+        }
+        const TextViewGraphemePosition& pos = self.m_textCursor->pos();
+        const QString& line = lineVec[pos.pos.lineIndex];
+        const bool x = line.length() == pos.pos.charIndex;
+        return x;
     }
 };
 
@@ -328,7 +341,6 @@ paintEvent(QPaintEvent* event)  // override
 
     const QFontMetricsF fontMetricsF{font()};
     const qreal lineSpacing = fontMetricsF.lineSpacing();
-    const std::vector<QString>& textLineVec = m_docView->doc().lineVec();
     if (m_isAfterSetDoc)
     {
         m_isAfterSetDoc = false;
@@ -343,7 +355,7 @@ paintEvent(QPaintEvent* event)  // override
 
         // hbar->value() is 'negative pixel offset'.  If 345, then shift viewport 345 pixels left.
         QScrollBar* hbar = horizontalScrollBar();
-        const qreal maxLineWidth = Private::maxLineWidth(textLineVec, fontMetricsF);
+        const qreal maxLineWidth = Private::maxLineWidth(*this, fontMetricsF);
         hbar->setRange(0, qRound(maxLineWidth) - viewport()->width());
         hbar->setValue(0);
         hbar->setPageStep(width());
@@ -383,6 +395,7 @@ paintEvent(QPaintEvent* event)  // override
             // Intentional: drawText() expects y as *bottom* of text line.
             qreal y = fontMetricsF.ascent();
             const Private::SelectionRange selectionRange = Private::SelectionRange{*this};
+            const std::vector<QString>& lineVec = m_docView->doc().lineVec();
 
             auto visibleLineIndexIter = m_docView->visibleLineBegin() + verticalScrollBar()->value();
             m_firstVisibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
@@ -400,7 +413,7 @@ paintEvent(QPaintEvent* event)  // override
                     break;
                 }
                 const int visibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
-                const QString& line = textLineVec[visibleLineIndex];
+                const QString& line = lineVec[visibleLineIndex];
                 const Private::LineSelection lineSelection =
                     Private::lineSelection(*this, selectionRange, visibleLineIndex, line);
 
@@ -440,13 +453,13 @@ paintEvent(QPaintEvent* event)  // override
 
                 // From Qt5 docs: "Note: The y-position is used as the baseline of the font."
                 painter.drawText(QPointF{x, y}, line);
-
                 y += lineSpacing;
-                if (visibleLineIndex == m_textCursor->pos().lineIndex && m_textCursorRectF.isValid() == false)
+
+                const TextViewGraphemePosition& pos = m_textCursor->pos();
+                if (visibleLineIndex == pos.pos.lineIndex && m_textCursorRectF.isValid() == false)
                 {
-                    const qreal x2 = x + fontMetricsF.horizontalAdvance(line, m_textCursor->pos().charIndex);
-                    const QString& grapheme = m_textCursor->grapheme();
-                    const qreal width = fontMetricsF.horizontalAdvance(grapheme);
+                    const qreal x2 = x + fontMetricsF.horizontalAdvance(line, pos.pos.charIndex);
+                    const qreal width = fontMetricsF.horizontalAdvance(pos.grapheme);
                     const qreal y2 = lineSpacing * visibleLineOffset;
                     m_textCursorRectF = QRectF{QPointF{x2, y2}, QSizeF{width, lineSpacing}};
                     m_textCursorRect = m_textCursorRectF.toRect();

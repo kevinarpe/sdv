@@ -11,20 +11,26 @@
 #include <QRect>
 class QKeyEvent;
 class QPaintEvent;
-#include "TextViewPosition.h"
 #include "TextViewSelection.h"
+#include "TextSegmentFontWidth.h"
 
 namespace SDV {
 
 class TextView;
 class TextViewDocumentView;
 class TextViewGraphemeCursor;
+class TextViewGraphemePosition;
 
 class TextViewTextCursor : public QObject
 {
     Q_OBJECT
 
 public:
+    /** Used for end of line cursor */
+    static const QChar SPACE_CHAR;  // QChar{QLatin1Char{' '}}
+    /** Used for end of line cursor */
+    static const QString SPACE_GRAPHEME;  // QString{SPACE_CHAR}
+
     using Base = QObject;
     TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentView>& docView);
 
@@ -50,8 +56,7 @@ public:
      * @return true if the text cursor is visible (solid rectangle)
      */
     bool isVisible() const { return m_isVisible; }
-    const TextViewPosition& pos() const;
-    const QString& grapheme() const;
+    const TextViewGraphemePosition& pos() const;
     const TextViewSelection& selection() const { return m_selection; }
     bool isUpdate() const { return m_isUpdate; }
     bool hasMoved() const { return m_hasMoved; }

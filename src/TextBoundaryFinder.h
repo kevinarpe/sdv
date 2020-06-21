@@ -6,7 +6,6 @@
 #define SDV_TEXTBOUNDARYFINDER_H
 
 #include <QTextBoundaryFinder>
-#include "TextViewPosition.h"
 
 namespace SDV {
 

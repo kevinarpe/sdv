@@ -6,7 +6,7 @@
 #define SDV_ALGORITHM_H
 
 #include <cstddef>
-#include <concepts>
+//#include <concepts>
 
 namespace SDV {
 
@@ -64,27 +64,28 @@ struct Algorithm
             return __x;
         }
     }
-
-    // Ref: https://en.cppreference.com/w/cpp/concepts/integral
-    // Ref: https://www.modernescpp.com/index.php/c-core-guidelines-rules-for-the-usage-of-concepts-2
-
-    // Concepts Style A:
-//    template<typename _Integral>
-//    requires std::integral<_Integral>
-
-    // Concepts Style B:
-    template<std::integral _Integral>
-    static _Integral
-    midPointRoundUp(const _Integral __low, const _Integral __high)
-    {
-        assert(__low <= __high);
-        // Integer math always truncates -- round down.
-        const _Integral midPointRoundDown = (__high - __low) / 2;
-        // If width is odd, round up.
-        const _Integral isRangeOdd = (__high - __low) % 2;
-        const _Integral x = midPointRoundDown + isRangeOdd;
-        return x;
-    }
+    // Wait for GCC 10
+//
+//    // Ref: https://en.cppreference.com/w/cpp/concepts/integral
+//    // Ref: https://www.modernescpp.com/index.php/c-core-guidelines-rules-for-the-usage-of-concepts-2
+//
+//    // Concepts Style A:
+////    template<typename _Integral>
+////    requires std::integral<_Integral>
+//
+//    // Concepts Style B:
+//    template<std::integral _Integral>
+//    static _Integral
+//    midPointRoundUp(const _Integral __low, const _Integral __high)
+//    {
+//        assert(__low <= __high);
+//        // Integer math always truncates -- round down.
+//        const _Integral midPointRoundDown = (__high - __low) / 2;
+//        // If width is odd, round up.
+//        const _Integral isRangeOdd = (__high - __low) % 2;
+//        const _Integral x = midPointRoundDown + isRangeOdd;
+//        return x;
+//    }
 
     struct Vector
     {
