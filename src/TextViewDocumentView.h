@@ -24,9 +24,7 @@ public:
     void setDoc(const std::shared_ptr<TextViewDocument>& doc);
     void setRangeVisible(int firstVisibleLineIndexInclusive, int lastVisibleLineIndexInclusive, bool isVisible);
 
-    std::size_t visibleLineCount() { return m_visibleLineIndexVec.size(); }
-    const_iterator visibleLineBegin() const { return m_visibleLineIndexVec.begin(); }
-    const_iterator visibleLineEnd() const { return m_visibleLineIndexVec.end(); }
+    const std::vector<int> visibleLineIndexVec() const { return m_visibleLineIndexVec; }
 
     int firstVisibleLineIndex() const;
     int lastVisibleLineIndex() const;

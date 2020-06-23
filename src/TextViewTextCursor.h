@@ -13,13 +13,13 @@ class QKeyEvent;
 class QPaintEvent;
 #include "TextViewSelection.h"
 #include "TextSegmentFontWidth.h"
+#include "TextViewGraphemePosition.h"
 
 namespace SDV {
 
 class TextView;
 class TextViewDocumentView;
 class TextViewGraphemeCursor;
-class TextViewGraphemePosition;
 
 class TextViewTextCursor : public QObject
 {
@@ -84,7 +84,9 @@ public slots:
     void slotSetBlinkMillis(int millis);
 
 signals:
-    void signalPositionChanged();
+    // Only enable if we need later.
+//    void signalPositionChanged();
+    void signalLineChange(int lineIndex);
 
 protected:
     void timerEvent(QTimerEvent* event) override;

@@ -19,8 +19,13 @@
 
 namespace SDV {
 
-// Baby blue borrowed from IntelliJ! :)
-static const QBrush SELECTED_TEXT_BRUSH{QColor{166, 210, 255}};
+// public static
+const QBrush TextView::kSelectedTextBackgroundBrush{QBrush{QColor{166, 210, 255}}};
+
+// public static
+//const QBrush TextView::kTextCursorLineBackgroundBrush{QBrush{QColor{252, 250, 237}}};  // HSV->S=6
+const QBrush TextView::kTextCursorLineBackgroundBrush{QBrush{QColor{252, 249, 229}}};  // HSV->S=9
+//const QBrush TextView::kTextCursorLineBackgroundBrush{QBrush{QColor{252, 248, 222}}};  // HSV->S=12
 
 // private
 struct TextView::Private
@@ -68,6 +73,16 @@ struct TextView::Private
                 assert(false == selection.begin.isEqual(selection.end));
             }
         }
+
+        bool isValid() const { return (firstLineIndex >= 0 && lastLineIndex >= 0); }
+
+        bool
+        contains(const int lineIndex)
+        const
+        {
+            const bool x = (isValid() && lineIndex >= firstLineIndex && lineIndex <= lastLineIndex);
+            return x;
+        }
     };
 
     struct LineSelection
@@ -101,9 +116,7 @@ struct TextView::Private
                   const QString& line)
     {
         const TextViewSelection& selection = self.textCursor().selection();
-        if (selection.begin.isValid() == false
-            || lineIndex < selectionRange.firstLineIndex
-            || lineIndex > selectionRange.lastLineIndex)
+        if (false == selection.isValid() || false == selectionRange.contains(lineIndex))
         {
             const LineSelection& x = LineSelection::none(line);
             return x;
@@ -225,9 +238,12 @@ struct TextView::Private
     }
 
     static void
-    paintTextCursor(TextView& self, QPainter& painter, const QFontMetricsF& fontMetricsF, const QPalette& palette)
+    paintTextCursor(const TextView& self, QPainter& painter, const QFontMetricsF& fontMetricsF, const QPalette& palette)
     {
         const TextViewGraphemePosition& pos = self.m_textCursor->position();
+        if (pos.pos.lineIndex < self.m_firstVisibleLineIndex || pos.pos.lineIndex > self.m_lastFullyVisibleLineIndex) {
+            return;
+        }
         const bool isEndOfLine = isTextCursorEndOfLine(self);
 
         // If text cursor is visible, always paint here.
@@ -247,7 +263,7 @@ struct TextView::Private
             const bool isTextCursorSelected = selection.begin.isValid() && pos.pos.isLessThan(selection.begin);
 
             if (isTextCursorSelected) {
-                painter.fillRect(self.m_textCursorRectF, SELECTED_TEXT_BRUSH);
+                painter.fillRect(self.m_textCursorRectF, self.m_selectedTextBackgroundBrush);
             }
             else {
                 painter.fillRect(self.m_textCursorRectF, QBrush{palette.color(QPalette::ColorRole::Base)});
@@ -267,7 +283,7 @@ struct TextView::Private
     }
 
     static bool
-    isTextCursorEndOfLine(TextView& self)
+    isTextCursorEndOfLine(const TextView& self)
     {
         const std::vector<QString>& lineVec = self.m_docView->doc().lineVec();
         if (lineVec.empty()) {
@@ -287,6 +303,8 @@ TextView(QWidget* parent /*= nullptr*/)
       m_docView{std::make_shared<TextViewDocumentView>()},
       m_textCursor{std::make_unique<TextViewTextCursor>(*this, m_docView)},
       m_graphemeFinder{std::make_unique<GraphemeFinder>()},
+      m_selectedTextBackgroundBrush{kSelectedTextBackgroundBrush},
+      m_textCursorLineBackgroundBrush{kTextCursorLineBackgroundBrush},
       m_isAfterSetDoc{false},
       m_fullyVisibleLineCount{0}, m_visibleLineCount{0},
       m_firstVisibleLineIndex{0}, m_lastFullyVisibleLineIndex{0}, m_lastVisibleLineIndex{0}
@@ -306,6 +324,34 @@ setDoc(const std::shared_ptr<TextViewDocument>& doc)
     m_textCursor->reset();
     m_isAfterSetDoc = true;
     viewport()->update();
+}
+
+// public
+void
+TextView::
+setSelectedTextBackgroundBrush(const QBrush& b)
+{
+    if (b != m_selectedTextBackgroundBrush)
+    {
+        m_selectedTextBackgroundBrush = b;
+        update();
+        // Intentional: Update line number area widget
+        emit m_textCursor->signalLineChange(m_textCursor->position().pos.lineIndex);
+    }
+}
+
+// public
+void
+TextView::
+setTextCursorLineBackgroundBrush(const QBrush& b)
+{
+    if (b != m_textCursorLineBackgroundBrush)
+    {
+        m_textCursorLineBackgroundBrush = b;
+        update();
+        // Intentional: Update line number area widget
+        emit m_textCursor->signalLineChange(m_textCursor->position().pos.lineIndex);
+    }
 }
 
 // public
@@ -363,7 +409,7 @@ paintEvent(QPaintEvent* event)  // override
         // static_cast<int> will discard the final line if partially visible.
         const int fullyVisibleLineCount = static_cast<int>(viewport()->height() / lineSpacing);
         // vbar->value() is top line index.  The range is *inclusive*.
-        vbar->setRange(0, m_docView->visibleLineCount() - fullyVisibleLineCount);
+        vbar->setRange(0, m_docView->visibleLineIndexVec().size() - fullyVisibleLineCount);
         vbar->setValue(0);
         vbar->setPageStep(fullyVisibleLineCount);
 
@@ -380,9 +426,11 @@ paintEvent(QPaintEvent* event)  // override
     const bool isOnlyTextCursorUpdate = m_textCursor->isUpdate() && event->rect() == m_textCursorRect;
     if (false == isOnlyTextCursorUpdate)
     {
-        painter.fillRect(event->rect(), QBrush{palette.color(QPalette::ColorRole::Base)});
+        const QBrush& bgBrush = QBrush{palette.color(QPalette::ColorRole::Base)};
+        painter.fillRect(event->rect(), bgBrush);
+        const bool isTextCursorLineBgColorEnabled = (bgBrush != m_textCursorLineBackgroundBrush);
 
-        if (0 == m_docView->visibleLineCount())
+        if (m_docView->visibleLineIndexVec().empty())
         {
             m_firstVisibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = -1;
         }
@@ -407,8 +455,10 @@ paintEvent(QPaintEvent* event)  // override
             qreal y = fontMetricsF.ascent();
             const Private::SelectionRange selectionRange = Private::SelectionRange{*this};
             const std::vector<QString>& lineVec = m_docView->doc().lineVec();
+            const TextViewGraphemePosition& pos = m_textCursor->position();
 
-            auto visibleLineIndexIter = m_docView->visibleLineBegin() + verticalScrollBar()->value();
+            const std::vector<int>& visibleLineIndexVec = m_docView->visibleLineIndexVec();
+            auto visibleLineIndexIter = visibleLineIndexVec.begin() + verticalScrollBar()->value();
             const int first = m_firstVisibleLineIndex;
             const int lastFull = m_lastFullyVisibleLineIndex;
             const int last = m_lastVisibleLineIndex;
@@ -421,13 +471,24 @@ paintEvent(QPaintEvent* event)  // override
             }
             // TODO: ADD SUPPORT FOR TEXT FORMATTING
             int visibleLineOffset = 0;
-            for ( ; visibleLineOffset < visibleLineCount; ++visibleLineOffset, ++visibleLineIndexIter)
+            for ( ;
+                visibleLineOffset < visibleLineCount && visibleLineIndexVec.end() != visibleLineIndexIter;
+                ++visibleLineOffset, ++visibleLineIndexIter)
             {
-                if (m_docView->visibleLineEnd() == visibleLineIndexIter) {
-                    break;
-                }
                 const int visibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
                 const QString& line = lineVec[visibleLineIndex];
+
+                // Intentional: Draw background first when text cursor line.  Note: Selection has higher paint priority,
+                // as it is drawn after.
+                if (isTextCursorLineBgColorEnabled && pos.pos.lineIndex == visibleLineIndex)
+                {
+                    // Intentional: Add x because x <= 0.
+                    const qreal width = viewport()->width() + x;
+                    const QRectF& r = QRectF{QPointF{x, y - fontMetricsF.ascent()},
+                                             QSizeF{width, lineSpacing}};
+
+                    painter.fillRect(r, m_textCursorLineBackgroundBrush);
+                }
                 const Private::LineSelection lineSelection =
                     Private::lineSelection(*this, selectionRange, visibleLineIndex, line);
 
@@ -443,7 +504,7 @@ paintEvent(QPaintEvent* event)  // override
                     const QRectF& r = QRectF{QPointF{x + beforeSelectedWidth, y - fontMetricsF.ascent()},
                                              QSizeF{selectedWidth, lineSpacing}};
 
-                    painter.fillRect(r, SELECTED_TEXT_BRUSH);
+                    painter.fillRect(r, m_selectedTextBackgroundBrush);
 
                     if (lineSelection.isEnd == false)
                     {
@@ -453,10 +514,12 @@ paintEvent(QPaintEvent* event)  // override
 
                         if (viewport()->width() - x2 > 0.0)
                         {
+                            // Intentional: Add x2 because x2 <= 0.
+                            const qreal width = viewport()->width() + x2;
                             const QRectF& r = QRectF{QPointF{x2, y - fontMetricsF.ascent()},
-                                                     QSizeF{viewport()->width() - x2, lineSpacing}};
+                                                     QSizeF{width, lineSpacing}};
 
-                            painter.fillRect(r, SELECTED_TEXT_BRUSH);
+                            painter.fillRect(r, m_selectedTextBackgroundBrush);
                         }
                     }
                 }

@@ -20,6 +20,11 @@ class TextView : public QAbstractScrollArea
     Q_OBJECT
 
 public:
+    /** Baby blue borrowed from IntelliJ! :) */
+    static const QBrush kSelectedTextBackgroundBrush;  // {QBrush{QColor{166, 210, 255}}};
+    /** Light yellow borrowed from IntelliJ! :) */
+    static const QBrush kTextCursorLineBackgroundBrush;  // {QBrush{QColor{252, 250, 237}}};
+
     using Base = QAbstractScrollArea;
     explicit TextView(QWidget* parent = nullptr);
     ~TextView() override; // = default
@@ -30,6 +35,28 @@ public:
     TextViewTextCursor& textCursor() { return *m_textCursor; }
     const TextViewTextCursor& textCursor() const { return *m_textCursor; }
 
+    /** Default: kSelectedTextBackgroundBrush */
+    const QBrush& selectedTextBackgroundBrush() const { return m_selectedTextBackgroundBrush; }
+
+    /**
+     * Default: kSelectedTextBackgroundBrush
+     *
+     * @param b
+     *        background brush used for selected text
+     */
+    void setSelectedTextBackgroundBrush(const QBrush& b);
+
+    /** Default: kTextCursorLineBackgroundBrush */
+    const QBrush& textCursorLineBackgroundBrush() const { return m_textCursorLineBackgroundBrush; }
+
+    /**
+     * Default: kTextCursorLineBackgroundBrush
+     *
+     * @param b
+     *        background brush used for line of text cursor
+     */
+    void setTextCursorLineBackgroundBrush(const QBrush& b);
+
     int fullyVisibleLineCount() const { return m_fullyVisibleLineCount; }
     int visibleLineCount() const { return m_visibleLineCount; }
     int firstVisibleLineIndex() const { return m_firstVisibleLineIndex; }
@@ -39,6 +66,7 @@ public:
     const QRect& textCursorRect() const { return m_textCursorRect; }
 
     int lineIndexForHeight(qreal viewportYCoord) const;
+    // Optionally clip for viewport?
     // TODO: Add?: QRectF rectForLine(int visibleLineIndex) const;
     // TODO: Add?: QRectF rectForPosition(const TextViewPosition& pos) const;
 
@@ -62,6 +90,8 @@ private:
     std::shared_ptr<TextViewDocumentView> m_docView;
     std::unique_ptr<TextViewTextCursor> m_textCursor;
     std::unique_ptr<GraphemeFinder> m_graphemeFinder;
+    QBrush m_selectedTextBackgroundBrush;
+    QBrush m_textCursorLineBackgroundBrush;
     bool m_isAfterSetDoc;
     /**
      * Intentional: Store two copies of text cursor rect.  Why?  QWidget::update(QRect) only accept QRect.

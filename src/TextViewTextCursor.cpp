@@ -29,14 +29,29 @@ struct TextViewTextCursor::Private
     slotHorizontalScrollBarActionTriggered(TextViewTextCursor& self,
                                            const QAbstractSlider::SliderAction action)
     {
-        update(self);
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        // Intentional: Treat this as a move.  Horizontal scrolling shifts the on-screen position of text cursor.
+        updateAfterMove(self, pos);
     }
 
     static void
     slotVerticalScrollBarActionTriggered(TextViewTextCursor& self,
                                          const QAbstractSlider::SliderAction action)
     {
-        update(self);
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        // Intentional: Treat this as a move.  Vertical scrolling shifts the on-screen position of text cursor.
+        updateAfterMove(self, pos);
+    }
+
+    static void
+    slotVisibleLineIndicesChanged(TextViewTextCursor& self)
+    {
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        if (pos.pos.lineIndex < self.m_textView.firstVisibleLineIndex()
+            || pos.pos.lineIndex > self.m_textView.lastVisibleLineIndex())
+        {
+            self.m_timer.stop();
+        }
     }
 
     static const QString&
@@ -99,9 +114,9 @@ struct TextViewTextCursor::Private
                 const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
                 const std::vector<QString>& textLineVec = self.m_docView->doc().lineVec();
                 const auto iter0 = self.m_docView->find(origPos.pos.lineIndex);
-                const auto end = self.m_docView->visibleLineEnd();
+                const std::vector<int>& visibleLineIndexVec = self.m_docView->visibleLineIndexVec();
 
-                for (auto iter = iter0 ; end != iter ; ++iter)
+                for (auto iter = iter0 ; visibleLineIndexVec.end() != iter ; ++iter)
                 {
                     const int lineIndex = *iter;
                     const QString& line = textLineVec[lineIndex];
@@ -120,7 +135,7 @@ struct TextViewTextCursor::Private
                 }
                 const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
                 if (false == origPos.pos.isEqual(pos.pos)) {
-                    updateAfterMove(self);
+//                    updateAfterMove(self, lineChanged);
                 }
             }
         }
@@ -292,7 +307,7 @@ struct TextViewTextCursor::Private
     }
 
     static void
-    updateAfterMove(TextViewTextCursor& self)
+    updateAfterMove(TextViewTextCursor& self, const TextViewGraphemePosition& origPos)
     {
         self.m_hasMoved = true;
         self.m_isUpdate = true;
@@ -300,7 +315,17 @@ struct TextViewTextCursor::Private
         // It is weird UX to have the cursor blinking when moving the cursor.
         show(self);
         self.m_textView.viewport()->update();
-        emit self.signalPositionChanged();
+        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+        if (false == pos.pos.isEqual(origPos.pos))
+        {
+            // Only enable if we need later.
+//            emit self.signalPositionChanged();
+        }
+        // Intentional: Not else-if
+        if (pos.pos.lineIndex != origPos.pos.lineIndex)
+        {
+            emit self.signalLineChange(pos.pos.lineIndex);
+        }
     }
 
     /* Ex: &moveLeft */
@@ -309,9 +334,11 @@ struct TextViewTextCursor::Private
     static void
     move(TextViewTextCursor& self, MoveFunc moveFunc)
     {
+        // Intentional: Copy not reference.  Why?  moveFunc may change position.
+        const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
         if (moveFunc(self))
         {
-            updateAfterMove(self);
+            updateAfterMove(self, origPos);
             clearSelection(self);
         }
     }
@@ -329,7 +356,7 @@ struct TextViewTextCursor::Private
     static void
     moveSelect(TextViewTextCursor& self, MoveFunc moveFunc)
     {
-        // Intentional: Copy not reference!
+        // Intentional: Copy not reference.  Why?  moveFunc may change position.
         const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
         if (moveFunc(self))
         {
@@ -346,7 +373,7 @@ struct TextViewTextCursor::Private
                 self.m_selection.begin = origPos.pos;
             }
             self.m_selection.end = pos.pos;
-            updateAfterMove(self);
+            updateAfterMove(self, origPos);
         }
     }
 
@@ -777,7 +804,8 @@ struct TextViewTextCursor::Private
     {
         if (Qt::MouseButton::LeftButton == event->button())
         {
-            if (Qt::KeyboardModifier::ShiftModifier == QGuiApplication::keyboardModifiers())
+            const bool isShift = (Qt::KeyboardModifier::ShiftModifier == QGuiApplication::keyboardModifiers());
+            if (isShift)
             {
                 const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
                 self.m_selection.begin = pos.pos;
@@ -785,15 +813,22 @@ struct TextViewTextCursor::Private
             else {
                 clearSelection(self);
             }
-            const StopEventPropagation x = mouseMoveEvent(self, event);
-            assert(StopEventPropagation::Yes == x);
-            return x;
+            mouseButtonPressOrMoveEvent(self, event);
+            return StopEventPropagation::Yes;
         }
         return StopEventPropagation::No;
     }
 
     static StopEventPropagation
     mouseMoveEvent(TextViewTextCursor& self, QMouseEvent* event)
+    {
+        mouseButtonPressOrMoveEvent(self, event);
+        return StopEventPropagation::Yes;
+    }
+    // Intentional: There is no need to capture mouseReleaseEvent for LeftButton.
+
+    static void
+    mouseButtonPressOrMoveEvent(TextViewTextCursor& self, QMouseEvent* event)
     {
         // event->button(): "Note that the returned value is always Qt::NoButton for mouse move events."
         const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
@@ -805,16 +840,37 @@ struct TextViewTextCursor::Private
         const QFontMetricsF fontMetricsF{self.m_textView.font()};
         const TextSegmentFontWidth fontWidth = self.m_graphemeCursor->horizontalMove(fontMetricsF, event->pos().x());
         const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
-        if (false == origPos.pos.isEqual(pos.pos))
-        {
-            self.m_fontWidth = fontWidth;
-            horizontalScrollToEnsureVisible(self, fontWidth);
-            verticalScrollToEnsureVisible(self);
-            updateAfterMove(self);
+        if (origPos.pos.isEqual(pos.pos)) {
+            return;
         }
-        return StopEventPropagation::Yes;
+        self.m_fontWidth = fontWidth;
+        if (QEvent::Type::MouseButtonPress == event->type())
+        {
+            const bool isShift = (Qt::KeyboardModifier::ShiftModifier == QGuiApplication::keyboardModifiers());
+            if (false == isShift)
+            {
+                self.m_selection.begin = pos.pos;
+                // Explicit: A single left mouse button click without shift key should *not* create a valid selection!
+                self.m_selection.end.invalidate();
+            }
+        }
+        else if (QEvent::Type::MouseMove == event->type())
+        {
+            if (pos.pos.isEqual(self.m_selection.begin)) {
+                // Mouse move cross-over original selection begin.
+                self.m_selection.end.invalidate();
+            }
+            else {
+                self.m_selection.end = pos.pos;
+            }
+        }
+        else {
+            assert(false && event->type());
+        }
+        horizontalScrollToEnsureVisible(self, fontWidth);
+        verticalScrollToEnsureVisible(self);
+        updateAfterMove(self, origPos);
     }
-    // Intentional: There is no need to capture mouseReleaseEvent for LeftButton.
 };
 
 // public
@@ -845,6 +901,8 @@ TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentVie
         [this](int action) {
             Private::slotVerticalScrollBarActionTriggered(*this, static_cast<QAbstractSlider::SliderAction>(action));
         });
+    QObject::connect(&textView, &TextView::signalVisibleLineIndicesChanged,
+        [this]() { Private::slotVisibleLineIndicesChanged(*this); });
 }
 
 // public

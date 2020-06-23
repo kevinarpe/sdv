@@ -36,11 +36,10 @@ struct TextViewLineNumberArea::Private
     }
 
     static void
-    slotTextCursorPositionChanged(TextViewLineNumberArea& self)
+    slotTextCursorLineChanged(TextViewLineNumberArea& self, const int lineIndex)
     {
-        // TODO
-        int dummy = 1;
-        // if line index has changed, update highlight
+        // TODO: Can we update *less* than everything?
+        self.update();
     }
 
     static void
@@ -131,8 +130,8 @@ TextViewLineNumberArea(TextView& textView,
     QObject::connect(&textView, &TextView::signalVisibleLineIndicesChanged,
                      [this]() { Private::slotVisibleLineIndicesChanged(*this); });
 
-    QObject::connect(&textView.textCursor(), &TextViewTextCursor::signalPositionChanged,
-                     [this]() { Private::slotTextCursorPositionChanged(*this); });
+    QObject::connect(&textView.textCursor(), &TextViewTextCursor::signalLineChange,
+                     [this](const int lineIndex) { Private::slotTextCursorLineChanged(*this, lineIndex); });
 }
 
 // public
@@ -193,8 +192,9 @@ paintEvent(QPaintEvent* event)  // override
     const QRectF eventRectF{eventRect};
     QPainter painter{this};
     const QPalette& palette = this->palette();
-    const QColor& bgColor = palette.color(QPalette::ColorRole::Window);
-    painter.fillRect(eventRect, bgColor);
+    const QBrush& bgBrush = QBrush{palette.color(QPalette::ColorRole::Window)};
+    painter.fillRect(eventRect, bgBrush);
+    const bool isTextCursorLineBgColorEnabled = (bgBrush != m_textView.textCursorLineBackgroundBrush());
 
     painter.setPen(m_pen);
     painter.setFont(m_textView.font());
@@ -212,18 +212,23 @@ paintEvent(QPaintEvent* event)  // override
     const qreal fontHeight = fontMetricsF.height();
     QRectF drawTextRect{QPointF{x, y}, QSizeF{width, fontHeight}};
     Private::setClipRect(*this, event, &painter);
-    const auto end = m_textView.docView().visibleLineEnd();
-
+    const TextViewGraphemePosition& pos = m_textView.textCursor().position();
+    const std::vector<int>& visibleLineIndexVec = m_textView.docView().visibleLineIndexVec();
     const int firstVisibleLineIndex = m_textView.firstVisibleLineIndex();
     std::vector<int>::const_iterator iter = m_textView.docView().find(firstVisibleLineIndex);
 
-    for ( ; end != iter; ++iter)
+    for ( ; visibleLineIndexVec.end() != iter; ++iter)
     {
         const int lineIndex = *iter;
         const QString& number = QString::number(1 + lineIndex);
         // eventRectF may be less than whole widget.  If so, only repaint necessary area.
         if (eventRectF.intersects(drawTextRect))
         {
+            if (isTextCursorLineBgColorEnabled && lineIndex == pos.pos.lineIndex)
+            {
+                QRectF r{drawTextRect.topLeft(), QSizeF{qreal(this->width()), fontHeight}};
+                painter.fillRect(r, m_textView.textCursorLineBackgroundBrush());
+            }
             painter.drawText(drawTextRect, Qt::AlignmentFlag::AlignRight, number);
         }
         if (drawTextRect.bottom() >= height()) {

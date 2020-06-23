@@ -27,6 +27,9 @@ public:
 
     QSize sizeHint() const override;
 
+    /** Default: kDefaultLeftMarginCharWidthRatio */
+    qreal leftMarginCharWidthRatio() { return m_leftMarginCharWidthRatio; }
+
     /**
      * Default: kDefaultLeftMarginCharWidthRatio
      *
@@ -36,6 +39,9 @@ public:
      */
     void setLeftMarginCharWidthRatio(qreal leftMarginCharWidthRatio);
 
+    /** Default: kDefaultRightMarginCharWidthRatio */
+    qreal rightMarginCharWidthRatio() { return m_rightMarginCharWidthRatio; }
+
     /**
      * Default: kDefaultRightMarginCharWidthRatio
      *
@@ -44,6 +50,11 @@ public:
      *        <br>if char width is 12, then 1.0 will give 12 pixels right margin.
      */
     void setRightMarginCharWidthRatio(qreal rightMarginCharWidthRatio);
+
+    /**
+     * Default: kPen
+     */
+    const QPen& pen() const { return m_pen; }
 
     /**
      * Default: kPen

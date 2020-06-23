@@ -16,7 +16,7 @@ struct TextViewSelection
 
     bool isValid() const
     {
-        const bool x = begin.isValid() && end.isValid();
+        const bool x = begin.isValid() && end.isValid() && false == begin.isEqual(end);
         return x;
     }
 
