@@ -102,9 +102,13 @@ add_executable(sdv
         src/TextViewPosition.h
         src/TextViewLineTextFormat.cpp
         src/TextViewLineTextFormat.h
-        src/TextViewTextFormat.cpp
-        src/TextViewTextFormat.h
         src/TextViewLineNumberArea.cpp
-        src/TextViewLineNumberArea.h)
+        src/TextViewLineNumberArea.h
+        src/PaintEventFunctor.cpp
+        src/PaintEventFunctor.h
+        src/PaintEventContext.cpp
+        src/PaintEventContext.h
+        src/PaintEventContextImp.cpp
+        src/PaintEventContextImp.h)
 
 target_link_libraries(sdv Qt5::Widgets)

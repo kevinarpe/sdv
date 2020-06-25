@@ -33,6 +33,7 @@ public:
 
     using Base = QObject;
     TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentView>& docView);
+    ~TextViewTextCursor();
 
 //    enum class DisplayMode { Blinking, Solid };
     void reset();
@@ -99,9 +100,7 @@ private:
     int m_blinkMillis;
     QBasicTimer m_timer;
     bool m_isVisible;
-    // Ref: https://stackoverflow.com/a/6089065/257299
-//    std::unique_ptr<TextViewGraphemeCursor> m_graphemeCursor;
-    std::shared_ptr<TextViewGraphemeCursor> m_graphemeCursor;
+    std::unique_ptr<TextViewGraphemeCursor> m_graphemeCursor;
     TextSegmentFontWidth m_fontWidth;
     TextViewSelection m_selection;
     bool m_isUpdate;

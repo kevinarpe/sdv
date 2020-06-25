@@ -25,7 +25,8 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    static const QString WINDOW_TITLE;
+    static const QString kWindowTitle;
+
     using Base = QMainWindow;
     MainWindow(MainWindowManager& mainWindowManager,
                const std::unordered_map<JsonNodeType, TextFormat>& formatMap,
@@ -46,8 +47,8 @@ protected:
 
 private:
     struct Private;
-    static const QString CLIPBOARD_;  // = "<clipboard>";
-    static const QString STDIN_;  // = "<stdin>";
+    static const QString kClipboardAbsFilePath;  // = "<clipboard>";
+    static const QString kStdinAbsFilePath;  // = "<stdin>";
     const std::unordered_map<JsonNodeType, TextFormat>& m_formatMap;
     // Ex: "" or "/home/kca/saveme/qt5/structured-data-viewer/cmake-build-debug/CMakeCache.txt"
     QString m_absFilePath;

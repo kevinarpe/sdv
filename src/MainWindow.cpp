@@ -23,10 +23,86 @@
 #include "TextViewLineNumberArea.h"
 #include "TextViewDocument.h"
 #include "TextViewTextCursor.h"
+#include "PaintEventContextImp.h"
+#include "PaintEventFunctor.h"
 
 namespace SDV {
 
-static const QLocale locale_{};
+//namespace SDV {
+
+// Number: const QColor colorBlue = QColor{0, 0, 255};
+struct PaintEventFunctorImp : public PaintEventFunctor
+{
+    PaintEventFunctorImp(const QColor& color)
+        : m_pen{QPen{color}}
+    {}
+
+    ~PaintEventFunctorImp() override = default;
+
+    void operator()(QWidget& widget,
+                    // @Nullable
+                    PaintEventContext* context,
+                    QPaintEvent& event,
+                    QPainter& painter,
+                    const QRectF& textBoundingRect) override
+    {
+        painter.setPen(m_pen);
+    }
+
+private:
+    const QPen m_pen;
+};
+
+// Null or Bool: const QColor colorDarkBlue = QColor{0, 0, 128};
+// String: const QColor colorGreen = QColor{0, 128, 0};
+// Key: const QColor& colorPurple = QColor{102, 14, 122};
+struct BoldFontPaintEventFunctorImp : public PaintEventFunctor
+{
+    BoldFontPaintEventFunctorImp(const QColor& color)
+        : m_pen{QPen{color}}
+    {}
+
+    ~BoldFontPaintEventFunctorImp() override = default;
+
+    void operator()(QWidget& widget,
+                    // @Nullable
+                    PaintEventContext* context,
+                    QPaintEvent& event,
+                    QPainter& painter,
+                    const QRectF& textBoundingRect) override
+    {
+        PaintEventContextImp& c = dynamic_cast<PaintEventContextImp&>(*context);
+        painter.setFont(c.boldFont());
+        painter.setPen(m_pen);
+    }
+
+private:
+    const QPen m_pen;
+};
+
+// Null or Bool: const QColor colorDarkBlue = QColor{0, 0, 128};
+// String: const QColor colorGreen = QColor{0, 128, 0};
+// Key: const QColor& colorPurple = QColor{102, 14, 122};
+static const QColor kColorDarkBlue = QColor{0, 0, 128};
+static const QColor kColorBlue = QColor{0, 0, 255};
+static const QColor kColorGreen = QColor{0, 128, 0};
+static const QColor kColorPurple = QColor{102, 14, 122};
+
+static const std::shared_ptr<BoldFontPaintEventFunctorImp> kJsonNullOrBoolPaintEventFunctor =
+    std::make_shared<BoldFontPaintEventFunctorImp>(kColorDarkBlue);
+
+static const std::shared_ptr<PaintEventFunctorImp> kJsonNumberPaintEventFunctor =
+    std::make_shared<PaintEventFunctorImp>(kColorBlue);
+
+static const std::shared_ptr<BoldFontPaintEventFunctorImp> kJsonStringPaintEventFunctor =
+    std::make_shared<BoldFontPaintEventFunctorImp>(kColorGreen);
+
+static const std::shared_ptr<BoldFontPaintEventFunctorImp> kJsonKeyPaintEventFunctor =
+    std::make_shared<BoldFontPaintEventFunctorImp>(kColorPurple);
+
+//}  // namespace SDV
+
+static const QLocale kLocale{};
 
 struct shared_ptrs
 {
@@ -110,7 +186,7 @@ struct MainWindow::Private
                 QString("File: %1\nFailed to parse at offset %2: %3")
                     .arg(self.m_absFilePath).arg(doc.GetErrorOffset()).arg(parserError);
 
-            QMessageBox::critical(&self, WINDOW_TITLE, text,
+            QMessageBox::critical(&self, kWindowTitle, text,
                                   QMessageBox::StandardButtons(QMessageBox::StandardButton::Ok),
                                   QMessageBox::StandardButton::Ok);
             return;
@@ -126,14 +202,14 @@ struct MainWindow::Private
         const qint64 bufferCapacity;
         const QString inputDescription;
 
-        static const Input INVALID;
-        static const Input STDIN;
+        static const Input kInvalid;
+        static const Input kStdin;
     };
 
     static Input
     getInput(MainWindow& self) {
         if (QLatin1Char('-') == self.m_absFilePath) {
-            return Input::STDIN;
+            return Input::kStdin;
         }
         QFile file(self.m_absFilePath);
         qint64 size = -1;
@@ -144,10 +220,10 @@ struct MainWindow::Private
             if ( ! file.open(QIODevice::ReadOnly)) {
                 const QString& text =
                     QString("Failed to open file: %1\n\nError: %2").arg(self.m_absFilePath).arg(file.errorString());
-                QMessageBox::critical(&self, WINDOW_TITLE, text,
+                QMessageBox::critical(&self, kWindowTitle, text,
                                       QMessageBox::StandardButtons(QMessageBox::StandardButton::Ok),
                                       QMessageBox::StandardButton::Ok);
-                return Input::INVALID;
+                return Input::kInvalid;
             }
             size = file.size();
             const int fd = file.handle();
@@ -162,10 +238,10 @@ struct MainWindow::Private
             // Ref: https://stackoverflow.com/questions/17337602/how-to-get-error-message-when-ifstream-open-fails
             // errno: do some detective work to discover WHY
             const QString& text = QString("Failed to open file: %1").arg(self.m_absFilePath);
-            QMessageBox::critical(&self, WINDOW_TITLE, text,
+            QMessageBox::critical(&self, kWindowTitle, text,
                                   QMessageBox::StandardButtons(QMessageBox::StandardButton::Ok),
                                   QMessageBox::StandardButton::Ok);
-            return Input::INVALID;
+            return Input::kInvalid;
         }
         return Input{
             .inputStream{ifs},
@@ -191,13 +267,29 @@ struct MainWindow::Private
         const QStringList& lineList = result.m_jsonText.split(QRegularExpression{"\\r?\\n"});
         std::vector<QString> lineVec{lineList.begin(), lineList.end()};
         self.m_textView->setDoc(std::make_shared<TextViewDocument>(std::move(lineVec)));
+        // Cursor overlap plus text selection breaks these text formats.
+        if (false)
+        {
+            std::unordered_map<int, TextView::TextFormatSet>& map = self.m_textView->lineIndex_To_TextFormatSet_Map();
+            {
+                const int lineIndex = 1;
+                TextView::TextFormatSet& set = map[lineIndex];
+                assert(set.insert(TextViewLineTextFormat{4, 10, kJsonKeyPaintEventFunctor}).second);
+            }
+            {
+                const int lineIndex = 4;
+                TextView::TextFormatSet& set = map[lineIndex];
+                assert(set.insert(TextViewLineTextFormat{16, 13, kJsonKeyPaintEventFunctor}).second);
+                assert(set.insert(TextViewLineTextFormat{16 + 13 + 2, 10, kJsonStringPaintEventFunctor}).second);
+            }
+        }
         self.m_textView->setVisible(true);
         self.m_fileCloseAction->setEnabled(true);
 
-        if (CLIPBOARD_ != self.m_absFilePath && STDIN_ != self.m_absFilePath) {
+        if (kClipboardAbsFilePath != self.m_absFilePath && kStdinAbsFilePath != self.m_absFilePath) {
             self.m_mainWindowManagerToken.getMainWindowManager().tryAddFileOpenRecent(self.m_absFilePath);
         }
-        self.setWindowTitle(inputDescription + " - " + WINDOW_TITLE);
+        self.setWindowTitle(inputDescription + " - " + kWindowTitle);
         setStatusBarText(self, result);
     }
 
@@ -214,11 +306,11 @@ struct MainWindow::Private
 
         self.m_statusBarTextViewLabelBaseText =
             QString("%1 %2 | %3 Unicode %4 | %5 UTF-8 %6")
-                .arg(locale_.toString(lineCount))
+                .arg(kLocale.toString(lineCount))
                 .arg(1 == lineCount ? "line" : "lines")
-                .arg(locale_.toString(graphemeCount))
+                .arg(kLocale.toString(graphemeCount))
                 .arg(1 == graphemeCount ? "char" : "chars")
-                .arg(locale_.toString(byteCount))
+                .arg(kLocale.toString(byteCount))
                 .arg(1 == byteCount ? "byte" : "bytes");
 
         self.m_statusBar->textViewLabel()->setText(self.m_statusBarTextViewLabelBaseText);
@@ -248,7 +340,7 @@ struct MainWindow::Private
         }
         const bool shallClose =
             (QMessageBox::StandardButton::Yes ==
-                 QMessageBox::question(&self, WINDOW_TITLE, "Are you sure you want to close?",
+                 QMessageBox::question(&self, kWindowTitle, "Are you sure you want to close?",
                                        QMessageBox::StandardButton::Yes | QMessageBox::StandardButton::No,
                                        QMessageBox::StandardButton::Yes));
         if (shallClose)
@@ -273,7 +365,7 @@ struct MainWindow::Private
     {
         const bool x =
             (QMessageBox::StandardButton::Yes ==
-                 QMessageBox::question(&self, WINDOW_TITLE, "Are you sure you want to exit?",
+                 QMessageBox::question(&self, kWindowTitle, "Are you sure you want to exit?",
                                        QMessageBox::StandardButton::Yes | QMessageBox::StandardButton::No,
                                        QMessageBox::StandardButton::Yes));
         return x;
@@ -311,11 +403,11 @@ struct MainWindow::Private
         const int byteCount = countBytes(selectedText);
         const QString& x = self.m_statusBarTextViewLabelBaseText
                            + QString{" || <b><u>Selection</u></b>: %1 %2 | %3 Unicode %4 | %5 UTF-8 %6"}
-                               .arg(locale_.toString(lineCount))
+                               .arg(kLocale.toString(lineCount))
                                .arg(1 == lineCount ? "line" : "lines")
-                               .arg(locale_.toString(graphemeCount))
+                               .arg(kLocale.toString(graphemeCount))
                                .arg(1 == graphemeCount ? "char" : "chars")
-                               .arg(locale_.toString(byteCount))
+                               .arg(kLocale.toString(byteCount))
                                .arg(1 == byteCount ? "byte" : "bytes");
 
         self.m_statusBar->textViewLabel()->setText(x);
@@ -388,7 +480,7 @@ struct MainWindow::Private
         QClipboard* clipboard = QGuiApplication::clipboard();
         const QString& text = clipboard->text();
         if (text.isEmpty()) {
-            QMessageBox::warning(&self, WINDOW_TITLE, "Clipboard contains no text",
+            QMessageBox::warning(&self, kWindowTitle, "Clipboard contains no text",
                                  QMessageBox::StandardButtons(QMessageBox::StandardButton::Ok),
                                  QMessageBox::StandardButton::Ok);
             return;
@@ -402,19 +494,19 @@ struct MainWindow::Private
             const QString& msg =
                 QString("Failed to parse clipboard text at offset %1: %2").arg(doc.GetErrorOffset()).arg(parserError);
 
-            QMessageBox::critical(&self, WINDOW_TITLE, msg,
+            QMessageBox::critical(&self, kWindowTitle, msg,
                                   QMessageBox::StandardButtons(QMessageBox::StandardButton::Ok),
                                   QMessageBox::StandardButton::Ok);
             return;
         }
         if (self.m_absFilePath.isEmpty()) {
-            self.m_absFilePath = CLIPBOARD_;
-            openDoc(self, doc, text.length(), CLIPBOARD_);
+            self.m_absFilePath = kClipboardAbsFilePath;
+            openDoc(self, doc, text.length(), kClipboardAbsFilePath);
         }
         else {
             MainWindow* mw =
                 new MainWindow(
-                    self.m_mainWindowManagerToken.getMainWindowManager(), self.m_formatMap, CLIPBOARD_,
+                    self.m_mainWindowManagerToken.getMainWindowManager(), self.m_formatMap, kClipboardAbsFilePath,
                     self.parentWidget(), self.windowFlags());
             mw->setGeometry(&self);
             mw->show();
@@ -424,7 +516,7 @@ struct MainWindow::Private
     static void
     slotAbout(MainWindow& self)
     {
-        QMessageBox::about(&self, WINDOW_TITLE,
+        QMessageBox::about(&self, kWindowTitle,
             QString{"<font size='+1'><b>Structured Data Viewer</b></font>"}
             + "<p>"
             + "A fast, convenient viewer for structured data -- JSON, XML, HTML, etc."
@@ -437,18 +529,18 @@ struct MainWindow::Private
 };
 
 // public static
-const QString MainWindow::WINDOW_TITLE = "Structured Data Viewer";
+const QString MainWindow::kWindowTitle = "Structured Data Viewer";
 
 // private static
-const QString MainWindow::STDIN_ = "<stdin>";
+const QString MainWindow::kStdinAbsFilePath = "<stdin>";
 
 // private static
-const QString MainWindow::CLIPBOARD_ = "<clipboard>";
+const QString MainWindow::kClipboardAbsFilePath = "<clipboard>";
 
 // public static
 const MainWindow::Private::Input
 MainWindow::Private::Input::
-INVALID{
+kInvalid{
     .inputStream{},
     .bufferCapacity = -1,
     .inputDescription{}
@@ -457,11 +549,11 @@ INVALID{
 // public static
 const MainWindow::Private::Input
 MainWindow::Private::Input::
-STDIN{
+kStdin{
     .inputStream{shared_ptrs::do_not_delete(&std::cin)},
     // We have no idea how large is the input.  Use a reasonable default.
     .bufferCapacity = rapidjson::StringBuffer::kDefaultCapacity,
-    .inputDescription{MainWindow::STDIN_}
+    .inputDescription{MainWindow::kStdinAbsFilePath}
 };
 
 // public
@@ -481,11 +573,12 @@ MainWindow(MainWindowManager& mainWindowManager,
       m_isClosing{false}
 {
     setAttribute(Qt::WidgetAttribute::WA_DeleteOnClose);
-    setWindowTitle(WINDOW_TITLE);
+    setWindowTitle(kWindowTitle);
 //    setCentralWidget(m_textWidget);
     {
         QWidget* centralWidget = new QWidget{this};
         m_textView = new TextView{centralWidget};
+        m_textView->setPaintEventContext(std::make_shared<PaintEventContextImp>());
         m_textViewLineNumberArea = new TextViewLineNumberArea{*m_textView, centralWidget};
 
         QHBoxLayout* hboxLayout = new QHBoxLayout{};
@@ -561,7 +654,7 @@ MainWindow(MainWindowManager& mainWindowManager,
 //    setUnifiedTitleAndToolBarOnMac(true);
 
     if ( ! m_absFilePath.isEmpty()) {
-        if (CLIPBOARD_ == m_absFilePath) {
+        if (kClipboardAbsFilePath == m_absFilePath) {
             m_absFilePath.clear();
             Private::slotOpenFromClipboard(*this);
         }

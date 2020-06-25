@@ -18,6 +18,7 @@ class GraphemeFinder
 {
 public:
     GraphemeFinder();
+    ~GraphemeFinder();
 
     struct Result
     {
@@ -58,8 +59,7 @@ public:
                          IncludeTextCursor includeTextCursor);
 
 private:
-//    std::unique_ptr<TextBoundaryFinder> m_finder;
-    std::shared_ptr<TextBoundaryFinder> m_finder;
+    std::unique_ptr<TextBoundaryFinder> m_finder;
 };
 
 }  // namespace SDV

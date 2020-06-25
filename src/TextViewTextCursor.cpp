@@ -883,8 +883,7 @@ TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentVie
       m_isBlinking{false},
       m_blinkMillis{qApp->cursorFlashTime()},
       m_isVisible{true},
-//      m_graphemeCursor{std::make_unique<TextViewGraphemeCursor>(docView)},
-      m_graphemeCursor{std::make_shared<TextViewGraphemeCursor>(docView)},
+      m_graphemeCursor{std::make_unique<TextViewGraphemeCursor>(docView)},
       m_fontWidth{TextSegmentFontWidth{.beforeGrapheme = 0, .grapheme = 0}},
       m_selection{TextViewSelection::invalid()},
       m_isUpdate{false},
@@ -904,6 +903,12 @@ TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentVie
     QObject::connect(&textView, &TextView::signalVisibleLineIndicesChanged,
         [this]() { Private::slotVisibleLineIndicesChanged(*this); });
 }
+
+// Required when using std::unique_ptr<> with forward declarations.
+// Ref: https://stackoverflow.com/a/6089065/257299
+// public
+TextViewTextCursor::
+~TextViewTextCursor() = default;
 
 // public
 void

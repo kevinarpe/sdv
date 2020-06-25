@@ -5,15 +5,19 @@
 #ifndef SDV_TEXTVIEW_H
 #define SDV_TEXTVIEW_H
 
+#include <unordered_map>
+#include <set>
 #include <memory>
 #include <QAbstractScrollArea>
 #include "GraphemeFinder.h"
+#include "TextViewLineTextFormat.h"
 
 namespace SDV {
 
 class TextViewDocument;
 class TextViewDocumentView;
 class TextViewTextCursor;
+class PaintEventContext;
 
 class TextView : public QAbstractScrollArea
 {
@@ -57,11 +61,58 @@ public:
      */
     void setTextCursorLineBackgroundBrush(const QBrush& b);
 
-    int fullyVisibleLineCount() const { return m_fullyVisibleLineCount; }
-    int visibleLineCount() const { return m_visibleLineCount; }
+    /**
+     * Viewport height divided by font line spacing.  If the last visible line is partially visible, it is *included*.
+     *
+     * This is adjusted after a resize event.
+     *
+     * @see viewportFullyVisibleLineCount()
+     */
+    int viewportVisibleLineCount() const { return m_viewportVisibleLineCount; }
+
+    /**
+     * Viewport height divided by font line spacing.  If the last visible line is partially visible, it is *excluded*.
+     *
+     * This is adjusted after a resize event.
+     *
+     * @see viewportVisibleLineCount()
+     */
+    int viewportFullyVisibleLineCount() const { return m_viewportFullyVisibleLineCount; }
+
+    /**
+     * Line index of first visible line in viewport.
+     *
+     * Example: If the first three lines are hidden, return index 3, because indices 0, 1, and 2 are hidden.
+     *
+     * @return zero if the document is empty
+     */
     int firstVisibleLineIndex() const { return m_firstVisibleLineIndex; }
-    int lastFullyVisibleLineIndex() const { return m_lastFullyVisibleLineIndex; }
+
+    /**
+     * Line index of last visible line in viewport.  This line may be partially visible in the viewport.
+     *
+     * @return zero if the document is empty
+     */
     int lastVisibleLineIndex() const { return m_lastVisibleLineIndex; }
+
+    /**
+     * Line index of last visible line in viewport.  This line is always fully visible in the viewport.
+     *
+     * @return zero if the document is empty
+     */
+    int lastFullyVisibleLineIndex() const { return m_lastFullyVisibleLineIndex; }
+
+    // @Nullable
+    PaintEventContext* paintEventContext() const { return m_paintEventContext.get(); }
+
+    void setPaintEventContext(const std::shared_ptr<PaintEventContext>& paintEventContext)
+        { m_paintEventContext = paintEventContext; }
+
+    using TextFormatSet = std::set<TextViewLineTextFormat, TextViewLineTextFormat::NonOverlapCompare>;
+
+    std::unordered_map<int, TextFormatSet>& lineIndex_To_TextFormatSet_Map() { return m_lineIndex_To_TextFormatSet_Map; }
+
+    // TODO: Also measure visibleLineCount()?
 
     const QRect& textCursorRect() const { return m_textCursorRect; }
 
@@ -99,11 +150,13 @@ private:
      */
     QRect m_textCursorRect;
     QRectF m_textCursorRectF;
-    int m_fullyVisibleLineCount;
-    int m_visibleLineCount;
+    int m_viewportFullyVisibleLineCount;
+    int m_viewportVisibleLineCount;
     int m_firstVisibleLineIndex;
     int m_lastFullyVisibleLineIndex;
     int m_lastVisibleLineIndex;
+    std::shared_ptr<PaintEventContext> m_paintEventContext;
+    std::unordered_map<int, TextFormatSet> m_lineIndex_To_TextFormatSet_Map;
 };
 
 }  // namespace SDV

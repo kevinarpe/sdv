@@ -16,6 +16,7 @@ class TextViewDocument
 public:
     static const std::shared_ptr<TextViewDocument>& staticEmpty() { return s_empty; }
 
+    // TODO: What if lineVec is empty?  Silly right?
     explicit TextViewDocument(std::vector<QString>&& lineVec)
         : m_lineVec{lineVec}
     {}
@@ -27,6 +28,7 @@ private:
 
     static std::shared_ptr<TextViewDocument> s_empty;
 
+    // Private void ctor is only used to construct s_empty.
     TextViewDocument() = default;
 
     // more efficient to store a single QString, then do substrings.

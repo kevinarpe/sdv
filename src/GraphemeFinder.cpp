@@ -11,9 +11,14 @@ namespace SDV {
 // public
 GraphemeFinder::
 GraphemeFinder()
-//    : m_finder{std::make_unique<TextBoundaryFinder>()}
-    : m_finder{std::make_shared<TextBoundaryFinder>()}
+    : m_finder{std::make_unique<TextBoundaryFinder>()}
 {}
+
+// Required when using std::unique_ptr<> with forward declarations.
+// Ref: https://stackoverflow.com/a/6089065/257299
+// public
+GraphemeFinder::
+~GraphemeFinder() = default;
 
 // public
 GraphemeFinder::Result

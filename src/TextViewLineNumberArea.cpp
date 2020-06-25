@@ -209,8 +209,8 @@ paintEvent(QPaintEvent* event)  // override
     // Note: The paint code below uses Qt::AlignmentFlag::AlignRight, so left margin is handled implicitly.
     // Right margin is one char wide.
     const qreal width = this->width() - (m_rightMarginCharWidthRatio * charWidth);
-    const qreal fontHeight = fontMetricsF.height();
-    QRectF drawTextRect{QPointF{x, y}, QSizeF{width, fontHeight}};
+    // Note: If font leading is not zero, we *may* want to use font height here, instead of line spacing.
+    QRectF drawTextRect{QPointF{x, y}, QSizeF{width, lineSpacing}};
     Private::setClipRect(*this, event, &painter);
     const TextViewGraphemePosition& pos = m_textView.textCursor().position();
     const std::vector<int>& visibleLineIndexVec = m_textView.docView().visibleLineIndexVec();
@@ -226,7 +226,8 @@ paintEvent(QPaintEvent* event)  // override
         {
             if (isTextCursorLineBgColorEnabled && lineIndex == pos.pos.lineIndex)
             {
-                QRectF r{drawTextRect.topLeft(), QSizeF{qreal(this->width()), fontHeight}};
+                // Note: If font leading is not zero, we *may* want to use font height here, instead of line spacing.
+                QRectF r{drawTextRect.topLeft(), QSizeF{qreal(this->width()), lineSpacing}};
                 painter.fillRect(r, m_textView.textCursorLineBackgroundBrush());
             }
             painter.drawText(drawTextRect, Qt::AlignmentFlag::AlignRight, number);

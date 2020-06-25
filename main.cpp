@@ -12,6 +12,11 @@
 #include "src/QtHash.h"
 #include "src/Constants.h"
 #include "src/TextFormat.h"
+#include "src/PaintEventFunctor.h"
+#include "src/PaintEventContextImp.h"
+
+#include <set>
+#include "src/TextViewLineTextFormat.h"
 
 std::unordered_map<SDV::JsonNodeType, SDV::TextFormat>
 create();
@@ -84,10 +89,64 @@ getAbsFilePath(const QString& filePath);
  */
 int main(int argc, char *argv[])
 {
+    // TODO: Move to GoogleTest suite!
+    if (false) {
+        std::set<SDV::TextViewLineTextFormat, SDV::TextViewLineTextFormat::NonOverlapCompare> s{};
+//        s.insert(SDV::TextViewLineTextFormat{.charIndex = 0, .length = 3, .paintEventFunctor = nullptr});
+        {
+            const std::pair<std::set<SDV::TextViewLineTextFormat, SDV::TextViewLineTextFormat::NonOverlapCompare>::iterator, bool>& pair =
+                s.insert(SDV::TextViewLineTextFormat{0, 3, nullptr});
+
+            assert(pair.second);
+        }
+        {
+            const std::pair<std::set<SDV::TextViewLineTextFormat, SDV::TextViewLineTextFormat::NonOverlapCompare>::iterator, bool>& pair =
+                s.insert(SDV::TextViewLineTextFormat{0, 3, nullptr});
+
+            assert(false == pair.second);
+        }
+        {
+            const std::pair<std::set<SDV::TextViewLineTextFormat, SDV::TextViewLineTextFormat::NonOverlapCompare>::iterator, bool>& pair =
+                s.insert(SDV::TextViewLineTextFormat{0, 2, nullptr});
+
+            assert(false == pair.second);
+        }
+        {
+            const std::pair<std::set<SDV::TextViewLineTextFormat, SDV::TextViewLineTextFormat::NonOverlapCompare>::iterator, bool>& pair =
+                s.insert(SDV::TextViewLineTextFormat{0, 4, nullptr});
+
+            assert(false == pair.second);
+        }
+        {
+            const std::pair<std::set<SDV::TextViewLineTextFormat, SDV::TextViewLineTextFormat::NonOverlapCompare>::iterator, bool>& pair =
+                s.insert(SDV::TextViewLineTextFormat{1, 1, nullptr});
+
+            assert(false == pair.second);
+        }
+        {
+            const std::pair<std::set<SDV::TextViewLineTextFormat, SDV::TextViewLineTextFormat::NonOverlapCompare>::iterator, bool>& pair =
+                s.insert(SDV::TextViewLineTextFormat{1, 2, nullptr});
+
+            assert(false == pair.second);
+        }
+        {
+            const std::pair<std::set<SDV::TextViewLineTextFormat, SDV::TextViewLineTextFormat::NonOverlapCompare>::iterator, bool>& pair =
+                s.insert(SDV::TextViewLineTextFormat{2, 1, nullptr});
+
+            assert(false == pair.second);
+        }
+        {
+            const std::pair<std::set<SDV::TextViewLineTextFormat, SDV::TextViewLineTextFormat::NonOverlapCompare>::iterator, bool>& pair =
+                s.insert(SDV::TextViewLineTextFormat{3, 1, nullptr});
+
+            assert(pair.second);
+        }
+        int dummy = 1;
+    }
     QApplication app(argc, argv);
 //    app.setFont(QFont("Deja Vu Sans Mono", 14));
     QCommandLineParser parser;
-    parser.setApplicationDescription(SDV::MainWindow::WINDOW_TITLE);
+    parser.setApplicationDescription(SDV::MainWindow::kWindowTitle);
     parser.addHelpOption();
     QCommandLineOption fileOption(QStringList() << "f" << "file", "Input file or - for stdin", "FILE_PATH");
     assert(parser.addOption(fileOption));

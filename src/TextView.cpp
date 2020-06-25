@@ -16,6 +16,8 @@
 #include "TextViewTextCursor.h"
 #include "TextViewGraphemePosition.h"
 #include "Algorithm.h"
+#include "PaintEventContext.h"
+#include "PaintEventFunctor.h"
 
 namespace SDV {
 
@@ -36,9 +38,9 @@ struct TextView::Private
         const QFontMetricsF fontMetricsF{self.font()};
         const qreal lineSpacing = fontMetricsF.lineSpacing();
         // static_cast<int> will discard the final line if partially visible.
-        self.m_fullyVisibleLineCount = static_cast<int>(self.viewport()->height() / lineSpacing);
+        self.m_viewportFullyVisibleLineCount = static_cast<int>(self.viewport()->height() / lineSpacing);
         // Includes final line if partially visible.
-        self.m_visibleLineCount = std::ceil(self.viewport()->height() / lineSpacing);
+        self.m_viewportVisibleLineCount = std::ceil(self.viewport()->height() / lineSpacing);
     }
 
     static qreal
@@ -306,11 +308,12 @@ TextView(QWidget* parent /*= nullptr*/)
       m_selectedTextBackgroundBrush{kSelectedTextBackgroundBrush},
       m_textCursorLineBackgroundBrush{kTextCursorLineBackgroundBrush},
       m_isAfterSetDoc{false},
-      m_fullyVisibleLineCount{0}, m_visibleLineCount{0},
+      m_viewportFullyVisibleLineCount{0}, m_viewportVisibleLineCount{0},
       m_firstVisibleLineIndex{0}, m_lastFullyVisibleLineIndex{0}, m_lastVisibleLineIndex{0}
 {}
 
-// Intentional: Impl here b/c of forward decls in header.
+// Required when using std::unique_ptr<> with forward declarations.
+// Ref: https://stackoverflow.com/a/6089065/257299
 // public
 TextView::
 ~TextView() = default;  // override
@@ -457,6 +460,9 @@ paintEvent(QPaintEvent* event)  // override
             const std::vector<QString>& lineVec = m_docView->doc().lineVec();
             const TextViewGraphemePosition& pos = m_textCursor->position();
 
+            if (m_paintEventContext) {
+                m_paintEventContext->update(*this);
+            }
             const std::vector<int>& visibleLineIndexVec = m_docView->visibleLineIndexVec();
             auto visibleLineIndexIter = visibleLineIndexVec.begin() + verticalScrollBar()->value();
             const int first = m_firstVisibleLineIndex;
@@ -522,6 +528,49 @@ paintEvent(QPaintEvent* event)  // override
                             painter.fillRect(r, m_selectedTextBackgroundBrush);
                         }
                     }
+                    // From Qt5 docs: "Note: The y-position is used as the baseline of the font."
+                    painter.drawText(QPointF{x, y}, line);
+                }
+                else {  // if (lineSelection.length <= 0)
+                    auto iter = m_lineIndex_To_TextFormatSet_Map.find(visibleLineIndex);
+                    if (m_lineIndex_To_TextFormatSet_Map.end() != iter/* && iter->second.empty() == false*/)
+                    {
+                        QRectF r = QRectF{QPointF{x, y - fontMetricsF.ascent()},
+                                          QSizeF{qreal(viewport()->width()), lineSpacing}};
+                        const Qt::AlignmentFlag align = static_cast<const Qt::AlignmentFlag>(0);
+                        int charIndex = 0;
+                        const TextFormatSet& textFormatSet = iter->second;
+                        for (const TextViewLineTextFormat& lineTextFormat : textFormatSet)
+                        {
+                            if (lineTextFormat.charIndex > charIndex)
+                            {
+                                const QString& text = line.mid(charIndex, lineTextFormat.charIndex - charIndex);
+                                QRectF br{};
+                                painter.drawText(r, align, text, &br);
+                                r.moveLeft(r.left() + br.width());
+                            }
+                            const QString& text = line.mid(lineTextFormat.charIndex, lineTextFormat.length);
+                            QRectF textBoundingRect{r};
+                            // TODO: This is expensive if unnecessary.  Can we skip?  Can we query paintEventFunctor if required?
+                            textBoundingRect.setWidth(fontMetricsF.horizontalAdvance(text));
+                            painter.save();
+                            lineTextFormat.paintEventFunctor->operator()(
+                                *this, m_paintEventContext.get(), *event, painter, textBoundingRect);
+                            QRectF br{};
+                            painter.drawText(r, align, text, &br);
+                            painter.restore();
+                            r.moveLeft(r.left() + br.width());
+                            charIndex = lineTextFormat.charIndex + lineTextFormat.length;
+                        }
+                        if (charIndex < line.length())
+                        {
+                            const QString& text = line.right(line.length() - charIndex);
+                            painter.drawText(QPointF{r.x(), y}, text);
+                        }
+                    }
+                    else {
+                        painter.drawText(QPointF{x, y}, line);
+                    }
                 }
                 // From experience, the full line text should be drawn in a single call.  Why?  If we try to draw pieces
                 // and carefully colour the background (for selection, etc.), there will be sub-pixel discrepancies.
@@ -529,7 +578,7 @@ paintEvent(QPaintEvent* event)  // override
                 // shift before-/after-/selected text by sub-pixel horizontal distances.  Insane!
 
                 // From Qt5 docs: "Note: The y-position is used as the baseline of the font."
-                painter.drawText(QPointF{x, y}, line);
+//                painter.drawText(QPointF{x, y}, line);
                 y += lineSpacing;
 
                 const TextViewGraphemePosition& pos = m_textCursor->position();
