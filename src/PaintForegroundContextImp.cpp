@@ -1,15 +1,15 @@
 //
-// Created by kca on 25/6/2020.
+// Created by kca on 26/6/2020.
 //
 
-#include "PaintEventContextImp.h"
+#include "PaintForegroundContextImp.h"
 #include <QWidget>
 
 namespace SDV {
 
 // public
 void
-PaintEventContextImp::
+PaintForegroundContextImp::
 update(const QWidget& widget)  // override
 {
     m_boldFont = widget.font();

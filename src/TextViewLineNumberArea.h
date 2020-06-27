@@ -16,7 +16,7 @@ class TextViewLineNumberArea : public QWidget
 public:
     static const qreal kDefaultLeftMarginCharWidthRatio;  // = 0.5;
     static const qreal kDefaultRightMarginCharWidthRatio;  // = 1.0;
-    static const QPen kPen;  // = Pen{QColor{127, 129, 126}}
+    static const QPen kDefaultTextPen;  // = Pen{QColor{127, 129, 126}}
 
     using Base = QWidget;
     explicit TextViewLineNumberArea(TextView& textView,
@@ -31,8 +31,6 @@ public:
     qreal leftMarginCharWidthRatio() { return m_leftMarginCharWidthRatio; }
 
     /**
-     * Default: kDefaultLeftMarginCharWidthRatio
-     *
      * @param leftMarginCharWidthRatio
      *        number of 'char widths' to use as left margin
      *        <br>if char width is 12, then 0.5 will give 6 pixels left margin.
@@ -43,22 +41,16 @@ public:
     qreal rightMarginCharWidthRatio() { return m_rightMarginCharWidthRatio; }
 
     /**
-     * Default: kDefaultRightMarginCharWidthRatio
-     *
      * @param rightMarginCharWidthRatio
      *        number of 'char widths' to use as right margin
      *        <br>if char width is 12, then 1.0 will give 12 pixels right margin.
      */
     void setRightMarginCharWidthRatio(qreal rightMarginCharWidthRatio);
 
-    /**
-     * Default: kPen
-     */
-    const QPen& pen() const { return m_pen; }
+    /** Default: #kDefaultTextPen */
+    const QPen& textPen() const { return m_textPen; }
 
     /**
-     * Default: kPen
-     *
      * @param pen
      *        foreground color used to draw line numbers
      */
@@ -73,7 +65,7 @@ private:
     qreal m_leftMarginCharWidthRatio;
     qreal m_rightMarginCharWidthRatio;
     int m_width;
-    QPen m_pen;
+    QPen m_textPen;
 };
 
 }  // namespace SDV

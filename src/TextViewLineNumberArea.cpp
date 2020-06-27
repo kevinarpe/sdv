@@ -23,7 +23,7 @@ const qreal TextViewLineNumberArea::kDefaultRightMarginCharWidthRatio = 1.0;
 
 // Again: Borrowed from IntelliJ.  :)
 // public static
-const QPen TextViewLineNumberArea::kPen{QColor{127, 129, 126}};
+const QPen TextViewLineNumberArea::kDefaultTextPen{QColor{127, 129, 126}};
 
 struct TextViewLineNumberArea::Private
 {
@@ -119,7 +119,7 @@ TextViewLineNumberArea(TextView& textView,
     m_textView{textView},
     m_leftMarginCharWidthRatio(kDefaultLeftMarginCharWidthRatio),
     m_rightMarginCharWidthRatio(kDefaultRightMarginCharWidthRatio),
-    m_pen(kPen)
+    m_textPen(kDefaultTextPen)
 {
     {
         const QFontMetricsF fontMetricsF{m_textView.font()};
@@ -172,9 +172,9 @@ void
 TextViewLineNumberArea::
 setPen(const QPen& pen)
 {
-    if (pen != m_pen)
+    if (pen != m_textPen)
     {
-        m_pen = pen;
+        m_textPen = pen;
         update();
     }
 }
@@ -196,7 +196,7 @@ paintEvent(QPaintEvent* event)  // override
     painter.fillRect(eventRect, bgBrush);
     const bool isTextCursorLineBgColorEnabled = (bgBrush != m_textView.textCursorLineBackgroundBrush());
 
-    painter.setPen(m_pen);
+    painter.setPen(m_textPen);
     painter.setFont(m_textView.font());
 
     const QFontMetricsF fontMetricsF{m_textView.font()};

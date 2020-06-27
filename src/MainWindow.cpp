@@ -23,28 +23,22 @@
 #include "TextViewLineNumberArea.h"
 #include "TextViewDocument.h"
 #include "TextViewTextCursor.h"
-#include "PaintEventContextImp.h"
-#include "PaintEventFunctor.h"
+#include "PaintForegroundFunctor.h"
+#include "PaintForegroundContextImp.h"
 
 namespace SDV {
 
 //namespace SDV {
 
-// Number: const QColor colorBlue = QColor{0, 0, 255};
-struct PaintEventFunctorImp : public PaintEventFunctor
+struct PainterForegroundFunctorImp : public PaintForegroundFunctor
 {
-    PaintEventFunctorImp(const QColor& color)
+    explicit PainterForegroundFunctorImp(const QColor& color)
         : m_pen{QPen{color}}
     {}
 
-    ~PaintEventFunctorImp() override = default;
+    ~PainterForegroundFunctorImp() override = default;
 
-    void operator()(QWidget& widget,
-                    // @Nullable
-                    PaintEventContext* context,
-                    QPaintEvent& event,
-                    QPainter& painter,
-                    const QRectF& textBoundingRect) override
+    void beforeDrawText(QPainter& painter, PaintContext* nullableContext) const override
     {
         painter.setPen(m_pen);
     }
@@ -53,25 +47,17 @@ private:
     const QPen m_pen;
 };
 
-// Null or Bool: const QColor colorDarkBlue = QColor{0, 0, 128};
-// String: const QColor colorGreen = QColor{0, 128, 0};
-// Key: const QColor& colorPurple = QColor{102, 14, 122};
-struct BoldFontPaintEventFunctorImp : public PaintEventFunctor
+struct BoldFontPainterForegroundFunctorImp : public PaintForegroundFunctor
 {
-    BoldFontPaintEventFunctorImp(const QColor& color)
+    explicit BoldFontPainterForegroundFunctorImp(const QColor& color)
         : m_pen{QPen{color}}
     {}
 
-    ~BoldFontPaintEventFunctorImp() override = default;
+    ~BoldFontPainterForegroundFunctorImp() override = default;
 
-    void operator()(QWidget& widget,
-                    // @Nullable
-                    PaintEventContext* context,
-                    QPaintEvent& event,
-                    QPainter& painter,
-                    const QRectF& textBoundingRect) override
+    void beforeDrawText(QPainter& painter, PaintContext* nullableContext) const override
     {
-        PaintEventContextImp& c = dynamic_cast<PaintEventContextImp&>(*context);
+        PaintForegroundContextImp& c = dynamic_cast<PaintForegroundContextImp&>(*nullableContext);
         painter.setFont(c.boldFont());
         painter.setPen(m_pen);
     }
@@ -80,27 +66,24 @@ private:
     const QPen m_pen;
 };
 
-// Null or Bool: const QColor colorDarkBlue = QColor{0, 0, 128};
-// String: const QColor colorGreen = QColor{0, 128, 0};
-// Key: const QColor& colorPurple = QColor{102, 14, 122};
+//}  // namespace SDV
+
 static const QColor kColorDarkBlue = QColor{0, 0, 128};
 static const QColor kColorBlue = QColor{0, 0, 255};
 static const QColor kColorGreen = QColor{0, 128, 0};
 static const QColor kColorPurple = QColor{102, 14, 122};
 
-static const std::shared_ptr<BoldFontPaintEventFunctorImp> kJsonNullOrBoolPaintEventFunctor =
-    std::make_shared<BoldFontPaintEventFunctorImp>(kColorDarkBlue);
+static const std::shared_ptr<BoldFontPainterForegroundFunctorImp> kJsonNullOrBoolPainterForegroundFunctor =
+    std::make_shared<BoldFontPainterForegroundFunctorImp>(kColorDarkBlue);
 
-static const std::shared_ptr<PaintEventFunctorImp> kJsonNumberPaintEventFunctor =
-    std::make_shared<PaintEventFunctorImp>(kColorBlue);
+static const std::shared_ptr<PainterForegroundFunctorImp> kJsonNumberPainterForegroundFunctor =
+    std::make_shared<PainterForegroundFunctorImp>(kColorBlue);
 
-static const std::shared_ptr<BoldFontPaintEventFunctorImp> kJsonStringPaintEventFunctor =
-    std::make_shared<BoldFontPaintEventFunctorImp>(kColorGreen);
+static const std::shared_ptr<BoldFontPainterForegroundFunctorImp> kJsonStringPainterForegroundFunctor =
+    std::make_shared<BoldFontPainterForegroundFunctorImp>(kColorGreen);
 
-static const std::shared_ptr<BoldFontPaintEventFunctorImp> kJsonKeyPaintEventFunctor =
-    std::make_shared<BoldFontPaintEventFunctorImp>(kColorPurple);
-
-//}  // namespace SDV
+static const std::shared_ptr<BoldFontPainterForegroundFunctorImp> kJsonKeyPainterForegroundFunctor =
+    std::make_shared<BoldFontPainterForegroundFunctorImp>(kColorPurple);
 
 static const QLocale kLocale{};
 
@@ -267,26 +250,27 @@ struct MainWindow::Private
         const QStringList& lineList = result.m_jsonText.split(QRegularExpression{"\\r?\\n"});
         std::vector<QString> lineVec{lineList.begin(), lineList.end()};
         self.m_textView->setDoc(std::make_shared<TextViewDocument>(std::move(lineVec)));
-        // Cursor overlap plus text selection breaks these text formats.
         if (false)
         {
-            std::unordered_map<int, TextView::TextFormatSet>& map = self.m_textView->lineIndex_To_TextFormatSet_Map();
+            std::unordered_map<int, TextView::ForegroundFormatSet>& map =
+                self.m_textView->lineIndex_To_ForegroundFormatSet_Map();
             {
                 const int lineIndex = 1;
-                TextView::TextFormatSet& set = map[lineIndex];
-                assert(set.insert(TextViewLineTextFormat{4, 10, kJsonKeyPaintEventFunctor}).second);
+                TextView::ForegroundFormatSet& set = map[lineIndex];
+                assert(set.insert(LineFormatForeground{LineSegment{.charIndex = 4, .length = 10}, kJsonKeyPainterForegroundFunctor}).second);
             }
             {
                 const int lineIndex = 4;
-                TextView::TextFormatSet& set = map[lineIndex];
-                assert(set.insert(TextViewLineTextFormat{16, 13, kJsonKeyPaintEventFunctor}).second);
-                assert(set.insert(TextViewLineTextFormat{16 + 13 + 2, 10, kJsonStringPaintEventFunctor}).second);
+                TextView::ForegroundFormatSet& set = map[lineIndex];
+                assert(set.insert(LineFormatForeground{LineSegment{.charIndex = 16, .length = 13}, kJsonKeyPainterForegroundFunctor}).second);
+                assert(set.insert(LineFormatForeground{LineSegment{.charIndex = 31, .length = 10}, kJsonStringPainterForegroundFunctor}).second);
             }
         }
         self.m_textView->setVisible(true);
         self.m_fileCloseAction->setEnabled(true);
 
-        if (kClipboardAbsFilePath != self.m_absFilePath && kStdinAbsFilePath != self.m_absFilePath) {
+        if (kClipboardAbsFilePath != self.m_absFilePath && kStdinAbsFilePath != self.m_absFilePath)
+        {
             self.m_mainWindowManagerToken.getMainWindowManager().tryAddFileOpenRecent(self.m_absFilePath);
         }
         self.setWindowTitle(inputDescription + " - " + kWindowTitle);
@@ -578,7 +562,7 @@ MainWindow(MainWindowManager& mainWindowManager,
     {
         QWidget* centralWidget = new QWidget{this};
         m_textView = new TextView{centralWidget};
-        m_textView->setPaintEventContext(std::make_shared<PaintEventContextImp>());
+        m_textView->setPaintForegroundContext(std::make_shared<PaintForegroundContextImp>());
         m_textViewLineNumberArea = new TextViewLineNumberArea{*m_textView, centralWidget};
 
         QHBoxLayout* hboxLayout = new QHBoxLayout{};

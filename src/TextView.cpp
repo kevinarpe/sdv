@@ -16,18 +16,22 @@
 #include "TextViewTextCursor.h"
 #include "TextViewGraphemePosition.h"
 #include "Algorithm.h"
-#include "PaintEventContext.h"
-#include "PaintEventFunctor.h"
+#include "PaintBackgroundFunctor.h"
+#include "PaintForegroundFunctor.h"
+#include "PaintContext.h"
 
 namespace SDV {
 
 // public static
-const QBrush TextView::kSelectedTextBackgroundBrush{QBrush{QColor{166, 210, 255}}};
+const QPen TextView::kDefaultTextPen{QColor{Qt::GlobalColor::black}};
 
 // public static
-//const QBrush TextView::kTextCursorLineBackgroundBrush{QBrush{QColor{252, 250, 237}}};  // HSV->S=6
-const QBrush TextView::kTextCursorLineBackgroundBrush{QBrush{QColor{252, 249, 229}}};  // HSV->S=9
-//const QBrush TextView::kTextCursorLineBackgroundBrush{QBrush{QColor{252, 248, 222}}};  // HSV->S=12
+const QBrush TextView::kDefaultSelectedTextBackgroundBrush{QColor{166, 210, 255}};
+
+// public static
+//const QBrush TextView::kDefaultTextCursorLineBackgroundBrush{QColor{252, 250, 237}};  // HSV->S=6
+const QBrush TextView::kDefaultTextCursorLineBackgroundBrush{QColor{252, 249, 229}};  // HSV->S=9
+//const QBrush TextView::kDefaultTextCursorLineBackgroundBrush{QColor{252, 248, 222}};  // HSV->S=12
 
 // private
 struct TextView::Private
@@ -305,8 +309,9 @@ TextView(QWidget* parent /*= nullptr*/)
       m_docView{std::make_shared<TextViewDocumentView>()},
       m_textCursor{std::make_unique<TextViewTextCursor>(*this, m_docView)},
       m_graphemeFinder{std::make_unique<GraphemeFinder>()},
-      m_selectedTextBackgroundBrush{kSelectedTextBackgroundBrush},
-      m_textCursorLineBackgroundBrush{kTextCursorLineBackgroundBrush},
+      m_textPen{kDefaultTextPen},
+      m_selectedTextBackgroundBrush{kDefaultSelectedTextBackgroundBrush},
+      m_textCursorLineBackgroundBrush{kDefaultTextCursorLineBackgroundBrush},
       m_isAfterSetDoc{false},
       m_viewportFullyVisibleLineCount{0}, m_viewportVisibleLineCount{0},
       m_firstVisibleLineIndex{0}, m_lastFullyVisibleLineIndex{0}, m_lastVisibleLineIndex{0}
@@ -332,11 +337,23 @@ setDoc(const std::shared_ptr<TextViewDocument>& doc)
 // public
 void
 TextView::
-setSelectedTextBackgroundBrush(const QBrush& b)
+setTextPen(const QPen& pen)
 {
-    if (b != m_selectedTextBackgroundBrush)
+    if (pen != m_textPen)
     {
-        m_selectedTextBackgroundBrush = b;
+        m_textPen = pen;
+        update();
+    }
+}
+
+// public
+void
+TextView::
+setSelectedTextBackgroundBrush(const QBrush& brush)
+{
+    if (brush != m_selectedTextBackgroundBrush)
+    {
+        m_selectedTextBackgroundBrush = brush;
         update();
         // Intentional: Update line number area widget
         emit m_textCursor->signalLineChange(m_textCursor->position().pos.lineIndex);
@@ -346,11 +363,11 @@ setSelectedTextBackgroundBrush(const QBrush& b)
 // public
 void
 TextView::
-setTextCursorLineBackgroundBrush(const QBrush& b)
+setTextCursorLineBackgroundBrush(const QBrush& brush)
 {
-    if (b != m_textCursorLineBackgroundBrush)
+    if (brush != m_textCursorLineBackgroundBrush)
     {
-        m_textCursorLineBackgroundBrush = b;
+        m_textCursorLineBackgroundBrush = brush;
         update();
         // Intentional: Update line number area widget
         emit m_textCursor->signalLineChange(m_textCursor->position().pos.lineIndex);
@@ -448,9 +465,7 @@ paintEvent(QPaintEvent* event)  // override
                    && visibleLineCount - fullyVisibleLineCount <= 1);
 
             painter.setFont(font());
-            // TODO: How to add text formatting?
-//            painter.setPen(QPen{palette.color(QPalette::ColorRole::Text)});
-            painter.setPen(QPen{QColor{Qt::GlobalColor::black}});
+            painter.setPen(m_textPen);
 
             // If hbar->value() is positive, then shift left.
             const qreal x = -1 * horizontalScrollBar()->value();
@@ -459,10 +474,8 @@ paintEvent(QPaintEvent* event)  // override
             const Private::SelectionRange selectionRange = Private::SelectionRange{*this};
             const std::vector<QString>& lineVec = m_docView->doc().lineVec();
             const TextViewGraphemePosition& pos = m_textCursor->position();
-
-            if (m_paintEventContext) {
-                m_paintEventContext->update(*this);
-            }
+            bool isFirstPaintBackground = true;
+            bool isFirstPaintForeground = true;
             const std::vector<int>& visibleLineIndexVec = m_docView->visibleLineIndexVec();
             auto visibleLineIndexIter = visibleLineIndexVec.begin() + verticalScrollBar()->value();
             const int first = m_firstVisibleLineIndex;
@@ -475,7 +488,6 @@ paintEvent(QPaintEvent* event)  // override
                 m_textCursorRectF = QRectF{};
                 m_textCursorRect = QRect{};
             }
-            // TODO: ADD SUPPORT FOR TEXT FORMATTING
             int visibleLineOffset = 0;
             for ( ;
                 visibleLineOffset < visibleLineCount && visibleLineIndexVec.end() != visibleLineIndexIter;
@@ -484,17 +496,70 @@ paintEvent(QPaintEvent* event)  // override
                 const int visibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
                 const QString& line = lineVec[visibleLineIndex];
 
-                // Intentional: Draw background first when text cursor line.  Note: Selection has higher paint priority,
-                // as it is drawn after.
+                if (visibleLineIndex == pos.pos.lineIndex && m_textCursorRectF.isValid() == false)
+                {
+                    const qreal x2 = x + fontMetricsF.horizontalAdvance(line, pos.pos.charIndex);
+                    const qreal width = fontMetricsF.horizontalAdvance(pos.grapheme);
+                    const qreal y2 = lineSpacing * visibleLineOffset;
+                    m_textCursorRectF = QRectF{QPointF{x2, y2}, QSizeF{width, lineSpacing}};
+                    m_textCursorRect = m_textCursorRectF.toRect();
+                }
+                // NOTES
+                // Decouple:
+                // (1) drawRect() -> fills bg (QBrush), draws optional border (QPen)
+                // (2) drawText() -> draw text (QPen & QFont)
+                // Background order:
+                // (1) Text cursor line
+                // (2) Text formatting (JSON, XML, HTML, etc.)
+                // (3) Text select *or* Find highlight
+                // Foreground order:
+                // (1) Text formatting (JSON, XML, HTML, etc.)
+                // Paint order:
+                // (1) Whole line background
+                // (2) Whole line foreground (text)
+
+                // From experience, the background (and borders) should be drawn first, then text.  Why?  Sub-pixel
+                // discrepancies will blemish segments.
+
+                // Draw text cursor line (background)
                 if (isTextCursorLineBgColorEnabled && pos.pos.lineIndex == visibleLineIndex)
                 {
                     // Intentional: Add x because x <= 0.
                     const qreal width = viewport()->width() + x;
-                    const QRectF& r = QRectF{QPointF{x, y - fontMetricsF.ascent()},
-                                             QSizeF{width, lineSpacing}};
+                    const QRectF& rectF = QRectF{QPointF{x, y - fontMetricsF.ascent()},
+                                                 QSizeF{width, lineSpacing}};
 
-                    painter.fillRect(r, m_textCursorLineBackgroundBrush);
+                    painter.fillRect(rectF, m_textCursorLineBackgroundBrush);
                 }
+                // Draw background (and borders)
+                {
+                    auto iter = m_lineIndex_To_BackgroundFormatSet_Map.find(visibleLineIndex);
+                    if (m_lineIndex_To_BackgroundFormatSet_Map.end() != iter && iter->second.empty() == false)
+                    {
+                        if (isFirstPaintBackground)
+                        {
+                            isFirstPaintBackground = false;
+                            if (m_paintBackgroundContext) {
+                                m_paintBackgroundContext->update(*this);
+                            }
+                        }
+                        QRectF rectF = QRectF{QPointF{x, y - fontMetricsF.ascent()},
+                                              QSizeF{qreal(viewport()->width()), lineSpacing}};
+
+                        const BackgroundFormatSet& formatSet = iter->second;
+                        for (const LineFormatBackground& format : formatSet)
+                        {
+                            QRectF textBoundingRectF{rectF};
+                            textBoundingRectF.moveLeft(fontMetricsF.horizontalAdvance(line, format.seg.charIndex));
+                            const QString& text = line.mid(format.seg.charIndex, format.seg.length);
+                            textBoundingRectF.setWidth(fontMetricsF.horizontalAdvance(text));
+                            painter.save();
+                            format.f->draw(painter, m_paintBackgroundContext.get(), textBoundingRectF);
+                            painter.restore();
+                        }
+                    }
+                }
+                // Draw text selection (background)
                 const Private::LineSelection lineSelection =
                     Private::lineSelection(*this, selectionRange, visibleLineIndex, line);
 
@@ -507,10 +572,11 @@ paintEvent(QPaintEvent* event)  // override
                     const qreal beforeSelectedWidth = fontMetricsF.horizontalAdvance(beforeSelectedText);
                     const qreal selectedWidth = fontMetricsF.horizontalAdvance(selectedText);
 
-                    const QRectF& r = QRectF{QPointF{x + beforeSelectedWidth, y - fontMetricsF.ascent()},
-                                             QSizeF{selectedWidth, lineSpacing}};
+                    const QRectF& rectF =
+                        QRectF{QPointF{x + beforeSelectedWidth, y - fontMetricsF.ascent()},
+                               QSizeF{selectedWidth, lineSpacing}};
 
-                    painter.fillRect(r, m_selectedTextBackgroundBrush);
+                    painter.fillRect(rectF, m_selectedTextBackgroundBrush);
 
                     if (lineSelection.isEnd == false)
                     {
@@ -522,74 +588,61 @@ paintEvent(QPaintEvent* event)  // override
                         {
                             // Intentional: Add x2 because x2 <= 0.
                             const qreal width = viewport()->width() + x2;
-                            const QRectF& r = QRectF{QPointF{x2, y - fontMetricsF.ascent()},
-                                                     QSizeF{width, lineSpacing}};
+                            const QRectF& rectF = QRectF{QPointF{x2, y - fontMetricsF.ascent()},
+                                                         QSizeF{width, lineSpacing}};
 
-                            painter.fillRect(r, m_selectedTextBackgroundBrush);
+                            painter.fillRect(rectF, m_selectedTextBackgroundBrush);
                         }
                     }
-                    // From Qt5 docs: "Note: The y-position is used as the baseline of the font."
-                    painter.drawText(QPointF{x, y}, line);
                 }
-                else {  // if (lineSelection.length <= 0)
-                    auto iter = m_lineIndex_To_TextFormatSet_Map.find(visibleLineIndex);
-                    if (m_lineIndex_To_TextFormatSet_Map.end() != iter/* && iter->second.empty() == false*/)
+                // Draw text
+                {
+                    auto iter = m_lineIndex_To_ForegroundFormatSet_Map.find(visibleLineIndex);
+                    if (m_lineIndex_To_ForegroundFormatSet_Map.end() == iter || iter->second.empty())
                     {
-                        QRectF r = QRectF{QPointF{x, y - fontMetricsF.ascent()},
-                                          QSizeF{qreal(viewport()->width()), lineSpacing}};
+                        // From Qt5 docs: "Note: The y-position is used as the baseline of the font."
+                        painter.drawText(QPointF{x, y}, line);
+                    }
+                    else {
+                        if (isFirstPaintForeground)
+                        {
+                            isFirstPaintForeground = false;
+                            if (m_paintForegroundContext) {
+                                m_paintForegroundContext->update(*this);
+                            }
+                        }
+                        QRectF rectF = QRectF{QPointF{x, y - fontMetricsF.ascent()},
+                                              QSizeF{qreal(viewport()->width()), lineSpacing}};
+
                         const Qt::AlignmentFlag align = static_cast<const Qt::AlignmentFlag>(0);
                         int charIndex = 0;
-                        const TextFormatSet& textFormatSet = iter->second;
-                        for (const TextViewLineTextFormat& lineTextFormat : textFormatSet)
+                        const ForegroundFormatSet& formatSet = iter->second;
+                        for (const LineFormatForeground& format : formatSet)
                         {
-                            if (lineTextFormat.charIndex > charIndex)
+                            if (format.seg.charIndex > charIndex)
                             {
-                                const QString& text = line.mid(charIndex, lineTextFormat.charIndex - charIndex);
-                                QRectF br{};
-                                painter.drawText(r, align, text, &br);
-                                r.moveLeft(r.left() + br.width());
+                                const QString& text = line.mid(charIndex, format.seg.charIndex - charIndex);
+                                QRectF boundingRectF{};
+                                painter.drawText(rectF, align, text, &boundingRectF);
+                                rectF.moveLeft(boundingRectF.right());
                             }
-                            const QString& text = line.mid(lineTextFormat.charIndex, lineTextFormat.length);
-                            QRectF textBoundingRect{r};
-                            // TODO: This is expensive if unnecessary.  Can we skip?  Can we query paintEventFunctor if required?
-                            textBoundingRect.setWidth(fontMetricsF.horizontalAdvance(text));
+                            const QString& text = line.mid(format.seg.charIndex, format.seg.length);
                             painter.save();
-                            lineTextFormat.paintEventFunctor->operator()(
-                                *this, m_paintEventContext.get(), *event, painter, textBoundingRect);
-                            QRectF br{};
-                            painter.drawText(r, align, text, &br);
+                            format.f->beforeDrawText(painter, m_paintForegroundContext.get());
+                            QRectF boundingRectF{};
+                            painter.drawText(rectF, align, text, &boundingRectF);
                             painter.restore();
-                            r.moveLeft(r.left() + br.width());
-                            charIndex = lineTextFormat.charIndex + lineTextFormat.length;
+                            rectF.moveLeft(boundingRectF.right());
+                            charIndex = format.seg.charIndex + format.seg.length;
                         }
                         if (charIndex < line.length())
                         {
                             const QString& text = line.right(line.length() - charIndex);
-                            painter.drawText(QPointF{r.x(), y}, text);
+                            painter.drawText(QPointF{rectF.x(), y}, text);
                         }
                     }
-                    else {
-                        painter.drawText(QPointF{x, y}, line);
-                    }
                 }
-                // From experience, the full line text should be drawn in a single call.  Why?  If we try to draw pieces
-                // and carefully colour the background (for selection, etc.), there will be sub-pixel discrepancies.
-                // If you "look under a microscope" (as I do!), it will drive you crazy.  Each move of the cursor will
-                // shift before-/after-/selected text by sub-pixel horizontal distances.  Insane!
-
-                // From Qt5 docs: "Note: The y-position is used as the baseline of the font."
-//                painter.drawText(QPointF{x, y}, line);
                 y += lineSpacing;
-
-                const TextViewGraphemePosition& pos = m_textCursor->position();
-                if (visibleLineIndex == pos.pos.lineIndex && m_textCursorRectF.isValid() == false)
-                {
-                    const qreal x2 = x + fontMetricsF.horizontalAdvance(line, pos.pos.charIndex);
-                    const qreal width = fontMetricsF.horizontalAdvance(pos.grapheme);
-                    const qreal y2 = lineSpacing * visibleLineOffset;
-                    m_textCursorRectF = QRectF{QPointF{x2, y2}, QSizeF{width, lineSpacing}};
-                    m_textCursorRect = m_textCursorRectF.toRect();
-                }
             }
             // Only adjust if we have a "full view": visibleLineCount == i
             if (visibleLineCount == visibleLineOffset && visibleLineCount > fullyVisibleLineCount) {

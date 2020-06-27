@@ -20,7 +20,7 @@ ENDIF(CMAKE_COMPILER_IS_GNUCC)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_AUTOMOC ON)
 
-include_directories(lib/qtbase-opensource-src-5.12.5+dfsg/include)
+#include_directories(lib/qtbase-opensource-src-5.12.5+dfsg/include)
 find_package(Qt5Widgets REQUIRED)
 find_package(RapidJSON REQUIRED)
 
@@ -100,15 +100,19 @@ add_executable(sdv
         src/TextViewSelection.h
         src/TextViewPosition.cpp
         src/TextViewPosition.h
-        src/TextViewLineTextFormat.cpp
-        src/TextViewLineTextFormat.h
         src/TextViewLineNumberArea.cpp
         src/TextViewLineNumberArea.h
-        src/PaintEventFunctor.cpp
-        src/PaintEventFunctor.h
-        src/PaintEventContext.cpp
-        src/PaintEventContext.h
-        src/PaintEventContextImp.cpp
-        src/PaintEventContextImp.h)
+        src/PaintBackgroundFunctor.cpp
+        src/PaintBackgroundFunctor.h
+        src/PaintForegroundFunctor.cpp
+        src/PaintForegroundFunctor.h
+        src/LineSegment.cpp
+        src/LineSegment.h
+        src/PaintContext.cpp
+        src/PaintContext.h
+        src/PaintForegroundContextImp.cpp
+        src/PaintForegroundContextImp.h
+        src/LineFormat.cpp
+        src/LineFormat.h)
 
 target_link_libraries(sdv Qt5::Widgets)

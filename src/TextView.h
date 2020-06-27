@@ -9,25 +9,28 @@
 #include <set>
 #include <memory>
 #include <QAbstractScrollArea>
+#include <QPen>
 #include "GraphemeFinder.h"
-#include "TextViewLineTextFormat.h"
+#include "PaintBackgroundFunctor.h"
+#include "PaintForegroundFunctor.h"
 
 namespace SDV {
 
 class TextViewDocument;
 class TextViewDocumentView;
 class TextViewTextCursor;
-class PaintEventContext;
+class PaintContext;
 
 class TextView : public QAbstractScrollArea
 {
     Q_OBJECT
 
 public:
+    static const QPen kDefaultTextPen;  // {QColor{Qt::GlobalColor::black}}
     /** Baby blue borrowed from IntelliJ! :) */
-    static const QBrush kSelectedTextBackgroundBrush;  // {QBrush{QColor{166, 210, 255}}};
+    static const QBrush kDefaultSelectedTextBackgroundBrush;  // {QColor{166, 210, 255}};
     /** Light yellow borrowed from IntelliJ! :) */
-    static const QBrush kTextCursorLineBackgroundBrush;  // {QBrush{QColor{252, 250, 237}}};
+    static const QBrush kDefaultTextCursorLineBackgroundBrush;  // {QColor{252, 250, 237}};
 
     using Base = QAbstractScrollArea;
     explicit TextView(QWidget* parent = nullptr);
@@ -39,27 +42,33 @@ public:
     TextViewTextCursor& textCursor() { return *m_textCursor; }
     const TextViewTextCursor& textCursor() const { return *m_textCursor; }
 
+    /** Default: kDefaultTextPen */
+    const QPen& textPen() const { return m_textPen; }
+
+    /**
+     * @param pen
+     *        foreground color used to paint text
+     *        <br>Override this pen using lineIndex_To_TextFormatSet_Map().
+     */
+    void setTextPen(const QPen& pen);
+
     /** Default: kSelectedTextBackgroundBrush */
     const QBrush& selectedTextBackgroundBrush() const { return m_selectedTextBackgroundBrush; }
 
     /**
-     * Default: kSelectedTextBackgroundBrush
-     *
-     * @param b
+     * @param brush
      *        background brush used for selected text
      */
-    void setSelectedTextBackgroundBrush(const QBrush& b);
+    void setSelectedTextBackgroundBrush(const QBrush& brush);
 
-    /** Default: kTextCursorLineBackgroundBrush */
+    /** Default: kDefaultTextCursorLineBackgroundBrush */
     const QBrush& textCursorLineBackgroundBrush() const { return m_textCursorLineBackgroundBrush; }
 
     /**
-     * Default: kTextCursorLineBackgroundBrush
-     *
-     * @param b
+     * @param brush
      *        background brush used for line of text cursor
      */
-    void setTextCursorLineBackgroundBrush(const QBrush& b);
+    void setTextCursorLineBackgroundBrush(const QBrush& brush);
 
     /**
      * Viewport height divided by font line spacing.  If the last visible line is partially visible, it is *included*.
@@ -102,17 +111,26 @@ public:
      */
     int lastFullyVisibleLineIndex() const { return m_lastFullyVisibleLineIndex; }
 
-    // @Nullable
-    PaintEventContext* paintEventContext() const { return m_paintEventContext.get(); }
-
-    void setPaintEventContext(const std::shared_ptr<PaintEventContext>& paintEventContext)
-        { m_paintEventContext = paintEventContext; }
-
-    using TextFormatSet = std::set<TextViewLineTextFormat, TextViewLineTextFormat::NonOverlapCompare>;
-
-    std::unordered_map<int, TextFormatSet>& lineIndex_To_TextFormatSet_Map() { return m_lineIndex_To_TextFormatSet_Map; }
-
     // TODO: Also measure visibleLineCount()?
+
+    // @Nullable
+    PaintContext* paintBackgroundContext() const { return m_paintBackgroundContext.get(); }
+
+    void setPaintBackgroundContext(const std::shared_ptr<PaintContext>& context) { m_paintBackgroundContext = context; }
+
+    // @Nullable
+    PaintContext* paintForegroundContext() const { return m_paintForegroundContext.get(); }
+
+    void setPaintForegroundContext(const std::shared_ptr<PaintContext>& context) { m_paintForegroundContext = context; }
+
+    using BackgroundFormatSet = std::set<LineFormatBackground, LineSegment::NonOverlapCompare<LineFormatBackground>>;
+    using ForegroundFormatSet = std::set<LineFormatForeground, LineSegment::NonOverlapCompare<LineFormatForeground>>;
+
+    std::unordered_map<int, BackgroundFormatSet>& lineIndex_To_BackgroundFormatSet_Map()
+        { return m_lineIndex_To_BackgroundFormatSet_Map; }
+
+    std::unordered_map<int, ForegroundFormatSet>& lineIndex_To_ForegroundFormatSet_Map()
+        { return m_lineIndex_To_ForegroundFormatSet_Map; }
 
     const QRect& textCursorRect() const { return m_textCursorRect; }
 
@@ -141,6 +159,7 @@ private:
     std::shared_ptr<TextViewDocumentView> m_docView;
     std::unique_ptr<TextViewTextCursor> m_textCursor;
     std::unique_ptr<GraphemeFinder> m_graphemeFinder;
+    QPen m_textPen;
     QBrush m_selectedTextBackgroundBrush;
     QBrush m_textCursorLineBackgroundBrush;
     bool m_isAfterSetDoc;
@@ -155,8 +174,10 @@ private:
     int m_firstVisibleLineIndex;
     int m_lastFullyVisibleLineIndex;
     int m_lastVisibleLineIndex;
-    std::shared_ptr<PaintEventContext> m_paintEventContext;
-    std::unordered_map<int, TextFormatSet> m_lineIndex_To_TextFormatSet_Map;
+    std::shared_ptr<PaintContext> m_paintBackgroundContext;
+    std::shared_ptr<PaintContext> m_paintForegroundContext;
+    std::unordered_map<int, BackgroundFormatSet> m_lineIndex_To_BackgroundFormatSet_Map;
+    std::unordered_map<int, ForegroundFormatSet> m_lineIndex_To_ForegroundFormatSet_Map;
 };
 
 }  // namespace SDV
