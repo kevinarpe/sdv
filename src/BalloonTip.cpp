@@ -48,6 +48,7 @@
 #include <QTimerEvent>
 #include <QDesktopWidget>
 #include <QApplication>
+#include <QScreen>
 
 namespace SDV {
 
@@ -196,7 +197,10 @@ void BalloonTip::balloon(const QPoint& pos, int timeoutMillis, bool showArrow)
 {
     this->showArrow = showArrow;
 //    QRect scr = QDesktopWidgetPrivate::screenGeometry(pos);
-    QRect scr = qApp->desktop()->screenGeometry(pos);
+    // Warning: "deprecated: Use QGuiApplication::screenAt()"
+//    QRect scr = qApp->desktop()->screenGeometry(pos);
+    QScreen* screen = qApp->screenAt(pos);
+    QRect scr = screen->geometry();
     QSize sh = sizeHint();
     const int border = 1;
     const int ah = 18, ao = 18, aw = 18, rc = 7;

@@ -20,7 +20,7 @@ ENDIF(CMAKE_COMPILER_IS_GNUCC)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_AUTOMOC ON)
 
-#include_directories(lib/qtbase-opensource-src-5.12.5+dfsg/include)
+#include_directories(lib/qtbase-opensource-src/include)
 find_package(Qt5Widgets REQUIRED)
 find_package(RapidJSON REQUIRED)
 

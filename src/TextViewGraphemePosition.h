@@ -12,6 +12,9 @@ namespace SDV {
 
 struct TextViewGraphemePosition
 {
+    /** Grapheme when cursor is at end-of-line */
+    static const QString kEndOfLineGrapheme;  // {kEndOfLineChar}
+
     TextViewPosition pos;
     /**
      * Zero based logical column index for a visual text editor.
@@ -20,12 +23,20 @@ struct TextViewGraphemePosition
      * whereas the emoji character would use grapheme index 0.
      */
     int graphemeIndex;
+
     /**
      * Always length 1 or 2
      *
      * For example: The grapheme "r" has length 1, but the grapheme "😋" has length 2.
+     *
+     * @see #isEndOfLine
      */
     QString grapheme;
+
+    /**
+     * If true, then {@link #grapheme} is always {@link #kEndOfLineGrapheme}.
+     */
+    bool isEndOfLine;
 
     bool isValid() const
     {

@@ -10,6 +10,7 @@
 #include <memory>
 #include <QAbstractScrollArea>
 #include <QPen>
+#include <QPainter>
 #include "GraphemeFinder.h"
 #include "PaintBackgroundFunctor.h"
 #include "PaintForegroundFunctor.h"
@@ -31,6 +32,8 @@ public:
     static const QBrush kDefaultSelectedTextBackgroundBrush;  // {QColor{166, 210, 255}};
     /** Light yellow borrowed from IntelliJ! :) */
     static const QBrush kDefaultTextCursorLineBackgroundBrush;  // {QColor{252, 250, 237}};
+    static const QBrush kDefaultTextCursorBackgroundBrush;  // {QColor{Qt::GlobalColor::black}};
+    static const QPen kDefaultTextCursorTextPen;  // {QColor{Qt::GlobalColor::white}};
 
     using Base = QAbstractScrollArea;
     explicit TextView(QWidget* parent = nullptr);
@@ -42,7 +45,7 @@ public:
     TextViewTextCursor& textCursor() { return *m_textCursor; }
     const TextViewTextCursor& textCursor() const { return *m_textCursor; }
 
-    /** Default: kDefaultTextPen */
+    /** Default: {@link #kDefaultTextPen} */
     const QPen& textPen() const { return m_textPen; }
 
     /**
@@ -52,7 +55,7 @@ public:
      */
     void setTextPen(const QPen& pen);
 
-    /** Default: kSelectedTextBackgroundBrush */
+    /** Default: {@link #kSelectedTextBackgroundBrush} */
     const QBrush& selectedTextBackgroundBrush() const { return m_selectedTextBackgroundBrush; }
 
     /**
@@ -61,7 +64,7 @@ public:
      */
     void setSelectedTextBackgroundBrush(const QBrush& brush);
 
-    /** Default: kDefaultTextCursorLineBackgroundBrush */
+    /** Default: {@link #kDefaultTextCursorLineBackgroundBrush} */
     const QBrush& textCursorLineBackgroundBrush() const { return m_textCursorLineBackgroundBrush; }
 
     /**
@@ -70,12 +73,30 @@ public:
      */
     void setTextCursorLineBackgroundBrush(const QBrush& brush);
 
+    /** Default: {@link #kDefaultTextCursorBackgroundBrush} */
+    const QBrush& textCursorBackgroundBrush() { return m_textCursorBackgroundBrush; }
+
+    /**
+     * @param brush
+     *        background brush used for text cursor
+     */
+    void setTextCursorBackgroundBrush(const QBrush& brush);
+
+    /** Default: {@link #kDefaultTextCursorTextPen} */
+    const QPen& textCursorTextPen() { return m_textCursorTextPen; }
+
+    /**
+     * @param pen
+     *        foreground color used to paint text cursor
+     */
+    void setTextCursorTextPen(const QPen& pen);
+
     /**
      * Viewport height divided by font line spacing.  If the last visible line is partially visible, it is *included*.
      *
      * This is adjusted after a resize event.
      *
-     * @see viewportFullyVisibleLineCount()
+     * @see #viewportFullyVisibleLineCount()
      */
     int viewportVisibleLineCount() const { return m_viewportVisibleLineCount; }
 
@@ -84,7 +105,7 @@ public:
      *
      * This is adjusted after a resize event.
      *
-     * @see viewportVisibleLineCount()
+     * @see #viewportVisibleLineCount()
      */
     int viewportFullyVisibleLineCount() const { return m_viewportFullyVisibleLineCount; }
 
@@ -162,6 +183,8 @@ private:
     QPen m_textPen;
     QBrush m_selectedTextBackgroundBrush;
     QBrush m_textCursorLineBackgroundBrush;
+    QBrush m_textCursorBackgroundBrush;
+    QPen m_textCursorTextPen;
     bool m_isAfterSetDoc;
     /**
      * Intentional: Store two copies of text cursor rect.  Why?  QWidget::update(QRect) only accept QRect.
@@ -169,6 +192,17 @@ private:
      */
     QRect m_textCursorRect;
     QRectF m_textCursorRectF;
+    /** Equals m_textCursorRectF but top-left is (0, 0) */
+    QRectF m_textCursorPixmapRectF;
+    /** Pixmap when text cursor is visible.  Painted by {@link #m_textCursorPainterVisible}. */
+    QPixmap m_textCursorPixmapVisible;
+    /** Painter for {@link #m_textCursorPixmapVisible} */
+    QPainter m_textCursorPainterVisible;
+    /** Pixmap when text cursor is invisible.  Painted by {@link #m_textCursorPainterInvisible}. */
+    QPixmap m_textCursorPixmapInvisible;
+    /** Painter for {@link #m_textCursorPixmapInvisible} */
+    QPainter m_textCursorPainterInvisible;
+
     int m_viewportFullyVisibleLineCount;
     int m_viewportVisibleLineCount;
     int m_firstVisibleLineIndex;

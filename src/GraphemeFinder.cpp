@@ -5,6 +5,7 @@
 #include "GraphemeFinder.h"
 #include "TextBoundaryFinder.h"
 #include "TextViewTextCursor.h"
+#include "TextViewGraphemePosition.h"
 
 namespace SDV {
 
@@ -55,10 +56,12 @@ positionForFontWidth(TextBoundaryFinder* const finder,
         {
             if (IncludeTextCursor::Yes == includeTextCursor)
             {
-                const qreal graphemeWidth = fontMetricsF.horizontalAdvance(TextViewTextCursor::SPACE_CHAR);
-                const Result& x = Result{.charIndex = graphemeBeginIndex,
+                const qreal graphemeWidth = fontMetricsF.horizontalAdvance(TextViewGraphemePosition::kEndOfLineGrapheme);
+                const Result& x = Result{
+                    .charIndex = graphemeBeginIndex,
                     .graphemeIndex = graphemeIndex,
-                    .grapheme = TextViewTextCursor::SPACE_GRAPHEME,
+                    .grapheme = TextViewGraphemePosition::kEndOfLineGrapheme,
+                    .isEndOfLine = true,
                     .fontWidth = TextSegmentFontWidth{.beforeGrapheme = width, .grapheme = graphemeWidth}};
                 return x;
             }
@@ -78,6 +81,7 @@ positionForFontWidth(TextBoundaryFinder* const finder,
                     .charIndex = graphemeBeginIndex,
                     .graphemeIndex = graphemeIndex,
                     .grapheme = grapheme,
+                    .isEndOfLine = false,
                     .fontWidth = TextSegmentFontWidth{.beforeGrapheme = width - graphemeWidth, .grapheme = graphemeWidth}
                 };
             return x;

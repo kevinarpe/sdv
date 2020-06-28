@@ -33,6 +33,14 @@ const QBrush TextView::kDefaultSelectedTextBackgroundBrush{QColor{166, 210, 255}
 const QBrush TextView::kDefaultTextCursorLineBackgroundBrush{QColor{252, 249, 229}};  // HSV->S=9
 //const QBrush TextView::kDefaultTextCursorLineBackgroundBrush{QColor{252, 248, 222}};  // HSV->S=12
 
+// public static
+const QBrush TextView::kDefaultTextCursorBackgroundBrush{QColor{Qt::GlobalColor::black}};
+
+// public static
+const QPen TextView::kDefaultTextCursorTextPen{QColor{Qt::GlobalColor::white}};
+
+static const Qt::AlignmentFlag kNoAlign = static_cast<const Qt::AlignmentFlag>(0);
+
 // private
 struct TextView::Private
 {
@@ -45,6 +53,30 @@ struct TextView::Private
         self.m_viewportFullyVisibleLineCount = static_cast<int>(self.viewport()->height() / lineSpacing);
         // Includes final line if partially visible.
         self.m_viewportVisibleLineCount = std::ceil(self.viewport()->height() / lineSpacing);
+
+        assert(self.m_viewportVisibleLineCount >= 1
+               && self.m_viewportVisibleLineCount >= self.m_viewportFullyVisibleLineCount
+               && self.m_viewportVisibleLineCount - self.m_viewportFullyVisibleLineCount <= 1);
+    }
+
+    static void afterSetDoc(TextView& self, const QFontMetricsF& fontMetricsF)
+    {
+        self.m_textCursorRectF = QRectF{};
+        self.m_textCursorRect = QRect{};
+
+        QScrollBar* vbar = self.verticalScrollBar();
+        // vbar->value() is top line index.  The range is *inclusive*.
+        vbar->setRange(0, self.m_docView->visibleLineIndexVec().size() - self.m_viewportFullyVisibleLineCount);
+        vbar->setValue(0);
+        vbar->setPageStep(self.m_viewportFullyVisibleLineCount);
+
+        // hbar->value() is 'negative pixel offset'.  If 345, then shift viewport 345 pixels left.
+        QScrollBar* hbar = self.horizontalScrollBar();
+        const qreal maxLineWidth = Private::maxLineWidth(self, fontMetricsF);
+        const int width = self.viewport()->width();
+        hbar->setRange(0, qRound(maxLineWidth) - width);
+        hbar->setValue(0);
+        hbar->setPageStep(width);
     }
 
     static qreal
@@ -53,10 +85,10 @@ struct TextView::Private
         const std::vector<QString>& lineVec = self.m_docView->doc().lineVec();
         qreal x = 0;
         std::for_each(lineVec.begin(), lineVec.end(),
-            [&fontMetricsF, &x](const QString& line)
-            {
-                x = std::max(x, fontMetricsF.horizontalAdvance(line));
-            });
+                      [&fontMetricsF, &x](const QString& line)
+                      {
+                          x = std::max(x, fontMetricsF.horizontalAdvance(line));
+                      });
         return x;
     }
 
@@ -244,61 +276,50 @@ struct TextView::Private
     }
 
     static void
-    paintTextCursor(const TextView& self, QPainter& painter, const QFontMetricsF& fontMetricsF, const QPalette& palette)
+    drawText(TextView& self, QPainter& painter, const bool paintTextCursor, QRectF& rectF,
+             const QString& line, const int charIndex, const int length)
+    {
+        const QString& text = line.mid(charIndex, length);
+        drawText(painter, rectF, text);
+
+        // Important: If text cursor is at end of line, there is no grapheme (text) to paint.
+        const TextViewGraphemePosition& textCursorPos = self.m_textCursor->position();
+
+        if (paintTextCursor
+            && textCursorPos.pos.charIndex >= charIndex
+            && textCursorPos.pos.charIndex < charIndex + length)
+        {
+            drawTextCursorGrapheme(self, self.m_textCursorPainterInvisible, painter.font(), painter.pen(), textCursorPos.grapheme);
+            drawTextCursorGrapheme(self, self.m_textCursorPainterVisible, painter.font(), self.m_textCursorTextPen, textCursorPos.grapheme);
+        }
+    }
+
+    static void
+    drawText(QPainter& painter, QRectF& rectF, const QString& text)
+    {
+        QRectF boundingRectF{};
+        painter.drawText(rectF, kNoAlign, text, &boundingRectF);
+        rectF.moveLeft(boundingRectF.right());
+    }
+
+    static void
+    drawTextCursorGrapheme(const TextView& self, QPainter& painter, const QFont& font, const QPen& pen, const QString& grapheme)
+    {
+        painter.setFont(font);
+        painter.setPen(pen);
+        painter.drawText(self.m_textCursorPixmapRectF, kNoAlign, grapheme);
+    }
+
+    static void
+    paintTextCursor(const TextView& self, QPainter& painter)
     {
         const TextViewGraphemePosition& pos = self.m_textCursor->position();
         if (pos.pos.lineIndex < self.m_firstVisibleLineIndex || pos.pos.lineIndex > self.m_lastFullyVisibleLineIndex) {
             return;
         }
-        const bool isEndOfLine = isTextCursorEndOfLine(self);
-
-        // If text cursor is visible, always paint here.
-        if (self.m_textCursor->isVisible())
-        {
-            painter.fillRect(self.m_textCursorRectF, QBrush{QColor{Qt::GlobalColor::black}});
-            if (false == isEndOfLine) {
-                painter.setPen(QPen{QColor{Qt::GlobalColor::white}});
-            }
-        }
-        // If text cursor is *not* visible, only re-paint when flagged for update.
-        else if (self.m_textCursor->isUpdate())
-        {
-            const TextViewSelection& selection = self.m_textCursor->selection();
-
-            // If selection is backward (right-to-left), then grapheme under text cursor will be selected.
-            const bool isTextCursorSelected = selection.begin.isValid() && pos.pos.isLessThan(selection.begin);
-
-            if (isTextCursorSelected) {
-                painter.fillRect(self.m_textCursorRectF, self.m_selectedTextBackgroundBrush);
-            }
-            else {
-                painter.fillRect(self.m_textCursorRectF, QBrush{palette.color(QPalette::ColorRole::Base)});
-            }
-
-            if (false == isEndOfLine) {
-                painter.setPen(QPen{palette.color(QPalette::ColorRole::Text)});
-            }
-        }
-
-        if (false == isEndOfLine) {
-            // Always paint text with QPointF, instead of QRectF.  Why?  CJK chars will not paint correctly.
-            const qreal y = self.m_textCursorRectF.y() + fontMetricsF.ascent();
-            painter.drawText(QPointF{self.m_textCursorRectF.x(), y}, pos.grapheme);
-        }
+        const QPixmap p = self.m_textCursor->isVisible() ? self.m_textCursorPixmapVisible : self.m_textCursorPixmapInvisible;
+        painter.drawPixmap(self.m_textCursorRectF, p, self.m_textCursorPixmapRectF);
         self.m_textCursor->afterPaintEvent();
-    }
-
-    static bool
-    isTextCursorEndOfLine(const TextView& self)
-    {
-        const std::vector<QString>& lineVec = self.m_docView->doc().lineVec();
-        if (lineVec.empty()) {
-            return true;
-        }
-        const TextViewGraphemePosition& pos = self.m_textCursor->position();
-        const QString& line = lineVec[pos.pos.lineIndex];
-        const bool x = line.length() == pos.pos.charIndex;
-        return x;
     }
 };
 
@@ -312,6 +333,8 @@ TextView(QWidget* parent /*= nullptr*/)
       m_textPen{kDefaultTextPen},
       m_selectedTextBackgroundBrush{kDefaultSelectedTextBackgroundBrush},
       m_textCursorLineBackgroundBrush{kDefaultTextCursorLineBackgroundBrush},
+      m_textCursorBackgroundBrush{kDefaultTextCursorBackgroundBrush},
+      m_textCursorTextPen{kDefaultTextCursorTextPen},
       m_isAfterSetDoc{false},
       m_viewportFullyVisibleLineCount{0}, m_viewportVisibleLineCount{0},
       m_firstVisibleLineIndex{0}, m_lastFullyVisibleLineIndex{0}, m_lastVisibleLineIndex{0}
@@ -375,6 +398,30 @@ setTextCursorLineBackgroundBrush(const QBrush& brush)
 }
 
 // public
+void
+TextView::
+setTextCursorBackgroundBrush(const QBrush& brush)
+{
+    if (brush != m_textCursorBackgroundBrush)
+    {
+        m_textCursorBackgroundBrush = brush;
+        update();
+    }
+}
+
+// public
+void
+TextView::
+setTextCursorTextPen(const QPen& pen)
+{
+    if (pen != m_textCursorTextPen)
+    {
+        m_textCursorTextPen = pen;
+        update();
+    }
+}
+
+// public
 int
 TextView::
 lineIndexForHeight(const qreal viewportYCoord)
@@ -419,31 +466,17 @@ paintEvent(QPaintEvent* event)  // override
 //    Base::paintEvent(event);
 
     const QFontMetricsF fontMetricsF{font()};
-    const qreal lineSpacing = fontMetricsF.lineSpacing();
     // TODO: Can this be moved inside resizeEvent()?  setDoc() should only reset h/v values to zero.
     if (m_isAfterSetDoc)
     {
         m_isAfterSetDoc = false;
-
-        QScrollBar* vbar = verticalScrollBar();
-        // static_cast<int> will discard the final line if partially visible.
-        const int fullyVisibleLineCount = static_cast<int>(viewport()->height() / lineSpacing);
-        // vbar->value() is top line index.  The range is *inclusive*.
-        vbar->setRange(0, m_docView->visibleLineIndexVec().size() - fullyVisibleLineCount);
-        vbar->setValue(0);
-        vbar->setPageStep(fullyVisibleLineCount);
-
-        // hbar->value() is 'negative pixel offset'.  If 345, then shift viewport 345 pixels left.
-        QScrollBar* hbar = horizontalScrollBar();
-        const qreal maxLineWidth = Private::maxLineWidth(*this, fontMetricsF);
-        hbar->setRange(0, qRound(maxLineWidth) - viewport()->width());
-        hbar->setValue(0);
-        hbar->setPageStep(width());
+        Private::afterSetDoc(*this, fontMetricsF);
     }
     const QPalette& palette = this->palette();
     QPainter painter{viewport()};
     painter.setFont(font());
     const bool isOnlyTextCursorUpdate = m_textCursor->isUpdate() && event->rect() == m_textCursorRect;
+    // TODO: Refactor this into private functions!
     if (false == isOnlyTextCursorUpdate)
     {
         const QBrush& bgBrush = QBrush{palette.color(QPalette::ColorRole::Base)};
@@ -456,53 +489,55 @@ paintEvent(QPaintEvent* event)  // override
         }
         // TODO: Add basic context menu with copy/Ctrl+C, select all/Ctrl+A, deselect/Ctrl+Shift+A
         else {
-            // static_cast<int> will discard the final line if partially visible.
-            const int fullyVisibleLineCount = static_cast<int>(viewport()->height() / lineSpacing);
-            // Includes final line if partially visible.
-            const int visibleLineCount = std::ceil(viewport()->height() / lineSpacing);
-            assert(visibleLineCount >= 1
-                   && visibleLineCount >= fullyVisibleLineCount
-                   && visibleLineCount - fullyVisibleLineCount <= 1);
-
             painter.setFont(font());
             painter.setPen(m_textPen);
 
+            const qreal lineSpacing = fontMetricsF.lineSpacing();
             // If hbar->value() is positive, then shift left.
             const qreal x = -1 * horizontalScrollBar()->value();
             // Intentional: drawText() expects y as *bottom* of text line.
             qreal y = fontMetricsF.ascent();
             const Private::SelectionRange selectionRange = Private::SelectionRange{*this};
             const std::vector<QString>& lineVec = m_docView->doc().lineVec();
-            const TextViewGraphemePosition& pos = m_textCursor->position();
+            const TextViewGraphemePosition& textCursorPos = m_textCursor->position();
             bool isFirstPaintBackground = true;
             bool isFirstPaintForeground = true;
             const std::vector<int>& visibleLineIndexVec = m_docView->visibleLineIndexVec();
-            auto visibleLineIndexIter = visibleLineIndexVec.begin() + verticalScrollBar()->value();
+            auto lineIndexIter = visibleLineIndexVec.begin() + verticalScrollBar()->value();
             const int first = m_firstVisibleLineIndex;
             const int lastFull = m_lastFullyVisibleLineIndex;
             const int last = m_lastVisibleLineIndex;
-            m_firstVisibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
+            m_firstVisibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *lineIndexIter;
 
-            if (m_textCursor->hasMoved()) {
-                // Intentional: Defensive programming :)
-                m_textCursorRectF = QRectF{};
-                m_textCursorRect = QRect{};
-            }
-            int visibleLineOffset = 0;
+            int visibleLineIndex = 0;
             for ( ;
-                visibleLineOffset < visibleLineCount && visibleLineIndexVec.end() != visibleLineIndexIter;
-                ++visibleLineOffset, ++visibleLineIndexIter)
+                visibleLineIndex < m_viewportVisibleLineCount && visibleLineIndexVec.end() != lineIndexIter;
+                ++visibleLineIndex, ++lineIndexIter)
             {
-                const int visibleLineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *visibleLineIndexIter;
-                const QString& line = lineVec[visibleLineIndex];
-
-                if (visibleLineIndex == pos.pos.lineIndex && m_textCursorRectF.isValid() == false)
+                const int lineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *lineIndexIter;
+                const QString& line = lineVec[lineIndex];
+                const bool paintTextCursor =
+                    (textCursorPos.pos.lineIndex == lineIndex && (m_textCursorRectF.isValid() == false || m_textCursor->hasMoved()));
+                if (paintTextCursor)
                 {
-                    const qreal x2 = x + fontMetricsF.horizontalAdvance(line, pos.pos.charIndex);
-                    const qreal width = fontMetricsF.horizontalAdvance(pos.grapheme);
-                    const qreal y2 = lineSpacing * visibleLineOffset;
+                    const qreal x2 = x + fontMetricsF.horizontalAdvance(line, textCursorPos.pos.charIndex);
+                    const qreal width = fontMetricsF.horizontalAdvance(textCursorPos.grapheme);
+                    const qreal y2 = lineSpacing * visibleLineIndex;
                     m_textCursorRectF = QRectF{QPointF{x2, y2}, QSizeF{width, lineSpacing}};
-                    m_textCursorRect = m_textCursorRectF.toRect();
+                    // Intentional: Do not call toRect() which will use qRound().
+                    // We need to round up so that m_textCursorRect always contains m_textCursorRectF.
+                    // This is important to construct QPixmaps with sufficient size to capture sub-pixel anti-aliasing on the rightmost
+                    // and lowermost pixels.
+                    m_textCursorRect = m_textCursorRectF.toAlignedRect();
+                    m_textCursorPixmapRectF = QRectF{QPointF{0, 0}, m_textCursorRectF.size()};
+
+                    m_textCursorPixmapVisible = QPixmap{m_textCursorRect.size()};
+                    m_textCursorPainterVisible.begin(&m_textCursorPixmapVisible);
+                    m_textCursorPainterVisible.fillRect(m_textCursorPixmapRectF, m_textCursorBackgroundBrush);
+
+                    m_textCursorPixmapInvisible = QPixmap{m_textCursorRect.size()};
+                    m_textCursorPainterInvisible.begin(&m_textCursorPixmapInvisible);
+                    m_textCursorPainterInvisible.fillRect(m_textCursorPixmapRectF, bgBrush);
                 }
                 // NOTES
                 // Decouple:
@@ -522,18 +557,21 @@ paintEvent(QPaintEvent* event)  // override
                 // discrepancies will blemish segments.
 
                 // Draw text cursor line (background)
-                if (isTextCursorLineBgColorEnabled && pos.pos.lineIndex == visibleLineIndex)
+                if (isTextCursorLineBgColorEnabled && textCursorPos.pos.lineIndex == lineIndex)
                 {
-                    // Intentional: Add x because x <= 0.
+                    // Intentional: Add x because x <= 0
                     const qreal width = viewport()->width() + x;
                     const QRectF& rectF = QRectF{QPointF{x, y - fontMetricsF.ascent()},
                                                  QSizeF{width, lineSpacing}};
 
                     painter.fillRect(rectF, m_textCursorLineBackgroundBrush);
+                    if (paintTextCursor) {
+                        m_textCursorPainterInvisible.fillRect(m_textCursorPixmapRectF, m_textCursorLineBackgroundBrush);
+                    }
                 }
                 // Draw background (and borders)
                 {
-                    auto iter = m_lineIndex_To_BackgroundFormatSet_Map.find(visibleLineIndex);
+                    auto iter = m_lineIndex_To_BackgroundFormatSet_Map.find(lineIndex);
                     if (m_lineIndex_To_BackgroundFormatSet_Map.end() != iter && iter->second.empty() == false)
                     {
                         if (isFirstPaintBackground)
@@ -556,15 +594,22 @@ paintEvent(QPaintEvent* event)  // override
                             painter.save();
                             format.f->draw(painter, m_paintBackgroundContext.get(), textBoundingRectF);
                             painter.restore();
+
+                            if (paintTextCursor
+                                && textCursorPos.pos.charIndex >= format.seg.charIndex
+                                && textCursorPos.pos.charIndex < format.seg.charIndex + format.seg.length)
+                            {
+                                format.f->draw(
+                                    m_textCursorPainterInvisible, m_paintBackgroundContext.get(), m_textCursorPixmapRectF);
+                            }
                         }
                     }
                 }
                 // Draw text selection (background)
-                const Private::LineSelection lineSelection =
-                    Private::lineSelection(*this, selectionRange, visibleLineIndex, line);
+                const Private::LineSelection lineSelection = Private::lineSelection(*this, selectionRange, lineIndex, line);
 
                 // If any selection exists on this line, only paint the background.
-                if (lineSelection.length > 0)
+                if (lineSelection.length > 0 || lineSelection.isEnd == false)
                 {
                     const QString beforeSelectedText = line.left(lineSelection.beforeLength);
                     const QString selectedText = line.mid(lineSelection.beforeLength, lineSelection.length);
@@ -572,11 +617,21 @@ paintEvent(QPaintEvent* event)  // override
                     const qreal beforeSelectedWidth = fontMetricsF.horizontalAdvance(beforeSelectedText);
                     const qreal selectedWidth = fontMetricsF.horizontalAdvance(selectedText);
 
-                    const QRectF& rectF =
-                        QRectF{QPointF{x + beforeSelectedWidth, y - fontMetricsF.ascent()},
-                               QSizeF{selectedWidth, lineSpacing}};
+                    if (lineSelection.length > 0)
+                    {
+                        const QRectF& rectF =
+                            QRectF{QPointF{x + beforeSelectedWidth, y - fontMetricsF.ascent()},
+                                   QSizeF{selectedWidth, lineSpacing}};
 
-                    painter.fillRect(rectF, m_selectedTextBackgroundBrush);
+                        painter.fillRect(rectF, m_selectedTextBackgroundBrush);
+
+                        if (paintTextCursor
+                            && textCursorPos.pos.charIndex >= lineSelection.beforeLength
+                            && textCursorPos.pos.charIndex < lineSelection.beforeLength + lineSelection.length)
+                        {
+                            m_textCursorPainterInvisible.fillRect(m_textCursorPixmapRectF, m_selectedTextBackgroundBrush);
+                        }
+                    }
 
                     if (lineSelection.isEnd == false)
                     {
@@ -592,16 +647,25 @@ paintEvent(QPaintEvent* event)  // override
                                                          QSizeF{width, lineSpacing}};
 
                             painter.fillRect(rectF, m_selectedTextBackgroundBrush);
+
+                            if (paintTextCursor
+                                && textCursorPos.pos.charIndex == lineSelection.beforeLength + lineSelection.length)
+                            {
+                                m_textCursorPainterInvisible.fillRect(m_textCursorPixmapRectF, m_selectedTextBackgroundBrush);
+                            }
                         }
                     }
                 }
                 // Draw text
                 {
-                    auto iter = m_lineIndex_To_ForegroundFormatSet_Map.find(visibleLineIndex);
+                    QRectF rectF = QRectF{QPointF{x, y - fontMetricsF.ascent()},
+                                          QSizeF{qreal(viewport()->width()), lineSpacing}};
+
+                    auto iter = m_lineIndex_To_ForegroundFormatSet_Map.find(lineIndex);
+
                     if (m_lineIndex_To_ForegroundFormatSet_Map.end() == iter || iter->second.empty())
                     {
-                        // From Qt5 docs: "Note: The y-position is used as the baseline of the font."
-                        painter.drawText(QPointF{x, y}, line);
+                        Private::drawText(*this, painter, paintTextCursor, rectF, line, 0, line.length());
                     }
                     else {
                         if (isFirstPaintForeground)
@@ -611,42 +675,43 @@ paintEvent(QPaintEvent* event)  // override
                                 m_paintForegroundContext->update(*this);
                             }
                         }
-                        QRectF rectF = QRectF{QPointF{x, y - fontMetricsF.ascent()},
-                                              QSizeF{qreal(viewport()->width()), lineSpacing}};
-
-                        const Qt::AlignmentFlag align = static_cast<const Qt::AlignmentFlag>(0);
                         int charIndex = 0;
                         const ForegroundFormatSet& formatSet = iter->second;
                         for (const LineFormatForeground& format : formatSet)
                         {
                             if (format.seg.charIndex > charIndex)
                             {
-                                const QString& text = line.mid(charIndex, format.seg.charIndex - charIndex);
-                                QRectF boundingRectF{};
-                                painter.drawText(rectF, align, text, &boundingRectF);
-                                rectF.moveLeft(boundingRectF.right());
+                                const int length = format.seg.charIndex - charIndex;
+                                Private::drawText(*this, painter, paintTextCursor, rectF, line, charIndex, length);
                             }
-                            const QString& text = line.mid(format.seg.charIndex, format.seg.length);
                             painter.save();
                             format.f->beforeDrawText(painter, m_paintForegroundContext.get());
-                            QRectF boundingRectF{};
-                            painter.drawText(rectF, align, text, &boundingRectF);
+                            Private::drawText(
+                                *this, painter, paintTextCursor, rectF, line, format.seg.charIndex, format.seg.length);
                             painter.restore();
-                            rectF.moveLeft(boundingRectF.right());
                             charIndex = format.seg.charIndex + format.seg.length;
                         }
                         if (charIndex < line.length())
                         {
-                            const QString& text = line.right(line.length() - charIndex);
-                            painter.drawText(QPointF{rectF.x(), y}, text);
+                            const int length = line.length() - charIndex;
+                            Private::drawText(*this, painter, paintTextCursor, rectF, line, charIndex, length);
                         }
                     }
                 }
+                if (paintTextCursor)
+                {
+                    // Call QPainter::end() so that the underlying QPixmap may be used safely.
+                    // Ref: https://stackoverflow.com/a/17889388/257299
+                    m_textCursorPainterVisible.end();
+                    m_textCursorPainterInvisible.end();
+                }
                 y += lineSpacing;
             }
-            // Only adjust if we have a "full view": visibleLineCount == i
-            if (visibleLineCount == visibleLineOffset && visibleLineCount > fullyVisibleLineCount) {
-                --m_lastFullyVisibleLineIndex;
+            // Only adjust if we have a "full view".
+            if (m_viewportVisibleLineCount == visibleLineIndex && m_viewportVisibleLineCount > m_viewportFullyVisibleLineCount)
+            {
+                --lineIndexIter;
+                m_lastFullyVisibleLineIndex = *lineIndexIter;
             }
             if (first != m_firstVisibleLineIndex || lastFull != m_lastFullyVisibleLineIndex || last != m_lastVisibleLineIndex)
             {
@@ -654,7 +719,7 @@ paintEvent(QPaintEvent* event)  // override
             }
         }
     }
-    Private::paintTextCursor(*this, painter, fontMetricsF, palette);
+    Private::paintTextCursor(*this, painter);
 }
 
 /**
@@ -677,14 +742,11 @@ resizeEvent(QResizeEvent* event)  // override
     const int heightDiff = event->size().height() - std::max(0, event->oldSize().height());
     if (0 != heightDiff)
     {
-        const QFontMetricsF fontMetricsF{font()};
-        // static_cast<int> will discard the final line if partially visible.
-        const int fullyVisibleLineCount = static_cast<int>(event->size().height() / fontMetricsF.lineSpacing());
-        QScrollBar* const vbar = verticalScrollBar();
-        vbar->setPageStep(fullyVisibleLineCount);
-        const int pageStepDiff = fullyVisibleLineCount - vbar->pageStep();
-        vbar->setMaximum(vbar->maximum() + pageStepDiff);
         Private::updateVisibleLineCounts(*this);
+        QScrollBar* const vbar = verticalScrollBar();
+        vbar->setPageStep(m_viewportFullyVisibleLineCount);
+        const int pageStepDiff = m_viewportFullyVisibleLineCount - vbar->pageStep();
+        vbar->setMaximum(vbar->maximum() + pageStepDiff);
     }
     // Tricky: event->oldSize() can be -1 on first resize.
     const int widthDiff = event->size().width() - std::max(0, event->oldSize().width());

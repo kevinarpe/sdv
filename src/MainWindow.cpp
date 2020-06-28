@@ -235,7 +235,7 @@ struct MainWindow::Private
 
     /**
      * @param inputDescription
-     *        usually filename, but might be STDIN_ or CLIPBOARD_
+     *        usually filename, but might be {@link kStdin} or {@link kClipboard}
      */
     static void
     openDoc(MainWindow& self, const rapidjson::Document& doc, const int bufferCapacity, const QString& inputDescription)

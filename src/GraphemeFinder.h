@@ -20,11 +20,15 @@ public:
     GraphemeFinder();
     ~GraphemeFinder();
 
+    /**
+     * @see TextViewGraphemePosition
+     */
     struct Result
     {
         int charIndex;
         int graphemeIndex;
         QString grapheme;
+        bool isEndOfLine;
         TextSegmentFontWidth fontWidth;
 
         bool isValid() const {
@@ -42,7 +46,7 @@ public:
 
     /**
      * @param includeTextCursor
-     *        if IncludeTextCursor::Yes, then return space (0x20) grapheme when past end of text
+     *        if IncludeTextCursor::Yes, then return space ({@code QLatin1Char{" "}}) grapheme when past end of text
      *        <br>if IncludeTextCursor::No, then return Result::invalid() when past end of text
      */
     Result

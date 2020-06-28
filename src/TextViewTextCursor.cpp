@@ -15,11 +15,6 @@
 
 namespace SDV {
 
-// public static
-const QChar TextViewTextCursor::SPACE_CHAR{QLatin1Char{' '}};
-// public static
-const QString TextViewTextCursor::SPACE_GRAPHEME{SPACE_CHAR};
-
 enum class StopEventPropagation { Yes, No };
 static const QString EMPTY_TEXT_LINE{};
 

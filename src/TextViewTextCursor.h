@@ -26,11 +26,6 @@ class TextViewTextCursor : public QObject
     Q_OBJECT
 
 public:
-    /** Used for end of line cursor */
-    static const QChar SPACE_CHAR;  // QChar{QLatin1Char{' '}}
-    /** Used for end of line cursor */
-    static const QString SPACE_GRAPHEME;  // QString{SPACE_CHAR}
-
     using Base = QObject;
     TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentView>& docView);
     ~TextViewTextCursor();

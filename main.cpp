@@ -64,6 +64,7 @@ getAbsFilePath(const QString& filePath);
  * Character inspection mode: Character under cursor has balloon pop-up to share Unicode details.
  * Status bar: Add current line number and grapheme number and selection info
  * Like IntelliJ, (Shift+)Ctrl+W will (de)select by scope -- wider and wider.
+ * Ctrl+MouseWheel should adjust font size.
  *
  * x Input?  x Clipboard, x file, x drag-n-drop
  * x Multiple tabs->windows for multiple inputs
