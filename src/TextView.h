@@ -147,10 +147,18 @@ public:
     using BackgroundFormatSet = std::set<LineFormatBackground, LineSegment::NonOverlapCompare<LineFormatBackground>>;
     using ForegroundFormatSet = std::set<LineFormatForeground, LineSegment::NonOverlapCompare<LineFormatForeground>>;
 
+    /** Do not forget to call {@link #update()} or {@link #setDoc(...)} after making modifications. */
     std::unordered_map<int, BackgroundFormatSet>& lineIndex_To_BackgroundFormatSet_Map()
         { return m_lineIndex_To_BackgroundFormatSet_Map; }
 
+    const std::unordered_map<int, BackgroundFormatSet>& lineIndex_To_BackgroundFormatSet_Map() const
+        { return m_lineIndex_To_BackgroundFormatSet_Map; }
+
+    /** Do not forget to call {@link #update()} or {@link #setDoc(...)} after making modifications. */
     std::unordered_map<int, ForegroundFormatSet>& lineIndex_To_ForegroundFormatSet_Map()
+        { return m_lineIndex_To_ForegroundFormatSet_Map; }
+
+    const std::unordered_map<int, ForegroundFormatSet>& lineIndex_To_ForegroundFormatSet_Map() const
         { return m_lineIndex_To_ForegroundFormatSet_Map; }
 
     const QRect& textCursorRect() const { return m_textCursorRect; }
@@ -169,6 +177,10 @@ public:
                               GraphemeFinder::IncludeTextCursor includeTextCursor) const;
 
 signals:
+    /**
+     * Emitted when any of these change:
+     * <br>{@link #firstVisibleLineIndex()}, {@link lastVisibleLineIndex()}, {@link lastFullyVisibleLineIndex()}
+     */
     void signalVisibleLineIndicesChanged();
 
 protected:

@@ -87,7 +87,7 @@ struct PlainTextEditDecorator::Private
                 continue;
             }
             const int lineIndex = textBlock.blockNumber();
-            const QVector<JsonNode*>& nodeVec = result.m_lineIndex_To_NodeVec[lineIndex];
+            const QVector<JsonNode*>& nodeVec = result.lineIndex_To_NodeVec[lineIndex];
             for (JsonNode* const jsonNode : nodeVec)
             {
                 const QRectF& z = self.m_parent.blockBoundingGeometry(textBlock).translated(self.m_parent.contentOffset());
@@ -222,9 +222,9 @@ struct PlainTextEditDecorator::Private
         const PrettyWriterResult& result = self.m_parent.result();
         if (isExpanded) {
             JsonNode* const firstChild = jsonNode->childVec().first();
-            const PrettyWriterResult::Pos& firstPos = result.m_nodeToPosMap[firstChild];
+            const PrettyWriterResult::Pos& firstPos = result.nodeToPosMap[firstChild];
             JsonNode* const lastChild = jsonNode->childVec().last();
-            const PrettyWriterResult::Pos& lastPos = result.m_nodeToPosMap[lastChild];
+            const PrettyWriterResult::Pos& lastPos = result.nodeToPosMap[lastChild];
             assert(firstPos.lineIndex <= lastPos.lineIndex);
             const QTextBlock& textBlock0 = self.m_parent.document()->findBlockByLineNumber(firstPos.lineIndex);
             QTextBlock textBlock = textBlock0;
@@ -233,7 +233,7 @@ struct PlainTextEditDecorator::Private
                  ++lineIndex, textBlock = textBlock.next())
             {
                 assert(textBlock.isValid());
-                const QVector<JsonNode*>& lineNodeVec = result.m_lineIndex_To_NodeVec[lineIndex];
+                const QVector<JsonNode*>& lineNodeVec = result.lineIndex_To_NodeVec[lineIndex];
                 assert( ! lineNodeVec.isEmpty());
                 QVector<JsonNode*>::const_iterator found = std::find_if(lineNodeVec.begin(), lineNodeVec.end(), &Private::isExpandable);
                 if (lineNodeVec.end() == found) {
@@ -246,7 +246,7 @@ struct PlainTextEditDecorator::Private
                     }
                     else {
                         JsonNode* const lastChild2 = expandableLineNode->childVec().last();
-                        const PrettyWriterResult::Pos& lastPos2 = result.m_nodeToPosMap[lastChild2];
+                        const PrettyWriterResult::Pos& lastPos2 = result.nodeToPosMap[lastChild2];
                         lineIndex = lastPos2.lineIndex - 1;
                         textBlock = self.m_parent.document()->findBlockByLineNumber(lineIndex);
                     }
@@ -255,9 +255,9 @@ struct PlainTextEditDecorator::Private
         }
         else {
             JsonNode* const firstChild = jsonNode->childVec().first();
-            const PrettyWriterResult::Pos& firstPos = result.m_nodeToPosMap[firstChild];
+            const PrettyWriterResult::Pos& firstPos = result.nodeToPosMap[firstChild];
             JsonNode* const lastChild = jsonNode->childVec().last();
-            const PrettyWriterResult::Pos& lastPos = result.m_nodeToPosMap[lastChild];
+            const PrettyWriterResult::Pos& lastPos = result.nodeToPosMap[lastChild];
             assert(firstPos.lineIndex <= lastPos.lineIndex);
             const QTextBlock& textBlock0 = self.m_parent.document()->findBlockByLineNumber(firstPos.lineIndex);
             QTextBlock textBlock = textBlock0;

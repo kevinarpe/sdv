@@ -8,6 +8,8 @@
 #include <memory>
 #include <QString>
 #include <QTextLayout>
+#include "Constants.h"
+#include "LineSegment.h"
 
 namespace SDV {
 
@@ -18,17 +20,27 @@ class JsonNode;
 // Ref: https://i.stack.imgur.com/C2EUm.png
 struct PrettyWriterResult
 {
-    struct Pos {
+    struct Pos
+    {
         int lineIndex = -1;
         int charIndex = -1;
     };
-    QString m_jsonText;
-    QVector<QTextLayout::FormatRange> m_formatRangeVec;
-    std::shared_ptr<JsonNode> m_rootNode;
+    QString jsonText;
+    // TODO: Remove later...
+    QVector<QTextLayout::FormatRange> formatRangeVec;
+    std::shared_ptr<JsonNode> rootNode;
     /** All nodes are owned indirectly by {@link #m_rootNode}. */
-    QMap<JsonNode*, Pos> m_nodeToPosMap;
+    QMap<JsonNode*, Pos> nodeToPosMap;
     /** All nodes are owned indirectly by {@link #m_rootNode}. */
-    QVector<QVector<JsonNode*>> m_lineIndex_To_NodeVec;
+    QVector<QVector<JsonNode*>> lineIndex_To_NodeVec;
+
+    struct JsonNodeLineSegment
+    {
+        JsonNodeType jsonNodeType;
+        int lineIndex;
+        LineSegment seg;
+    };
+    std::vector<JsonNodeLineSegment> jsonNodeLineSegmentVec;
 };
 
 }  // namespace SDV

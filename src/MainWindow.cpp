@@ -12,6 +12,7 @@
 #include <rapidjson/prettywriter.h>
 #include <QDebug>
 #include <iostream>
+#include "Algorithm.h"
 #include "MainWindowManager.h"
 #include "StatusBar.h"
 #include "TabWidget.h"
@@ -30,35 +31,16 @@ namespace SDV {
 
 //namespace SDV {
 
-struct PainterForegroundFunctorImp : public PaintForegroundFunctor
+struct PaintForegroundFunctorImp : public PaintForegroundFunctor
 {
-    explicit PainterForegroundFunctorImp(const QColor& color)
+    explicit PaintForegroundFunctorImp(const QColor& color)
         : m_pen{QPen{color}}
     {}
 
-    ~PainterForegroundFunctorImp() override = default;
+    ~PaintForegroundFunctorImp() override = default;
 
     void beforeDrawText(QPainter& painter, PaintContext* nullableContext) const override
     {
-        painter.setPen(m_pen);
-    }
-
-private:
-    const QPen m_pen;
-};
-
-struct BoldFontPainterForegroundFunctorImp : public PaintForegroundFunctor
-{
-    explicit BoldFontPainterForegroundFunctorImp(const QColor& color)
-        : m_pen{QPen{color}}
-    {}
-
-    ~BoldFontPainterForegroundFunctorImp() override = default;
-
-    void beforeDrawText(QPainter& painter, PaintContext* nullableContext) const override
-    {
-        PaintForegroundContextImp& c = dynamic_cast<PaintForegroundContextImp&>(*nullableContext);
-        painter.setFont(c.boldFont());
         painter.setPen(m_pen);
     }
 
@@ -73,17 +55,31 @@ static const QColor kColorBlue = QColor{0, 0, 255};
 static const QColor kColorGreen = QColor{0, 128, 0};
 static const QColor kColorPurple = QColor{102, 14, 122};
 
-static const std::shared_ptr<BoldFontPainterForegroundFunctorImp> kJsonNullOrBoolPainterForegroundFunctor =
-    std::make_shared<BoldFontPainterForegroundFunctorImp>(kColorDarkBlue);
+static const std::shared_ptr<PaintForegroundFunctorImp> kJsonNullOrBoolPainterForegroundFunctor =
+    std::make_shared<PaintForegroundFunctorImp>(kColorDarkBlue);
 
-static const std::shared_ptr<PainterForegroundFunctorImp> kJsonNumberPainterForegroundFunctor =
-    std::make_shared<PainterForegroundFunctorImp>(kColorBlue);
+static const std::shared_ptr<PaintForegroundFunctorImp> kJsonNumberPainterForegroundFunctor =
+    std::make_shared<PaintForegroundFunctorImp>(kColorBlue);
 
-static const std::shared_ptr<BoldFontPainterForegroundFunctorImp> kJsonStringPainterForegroundFunctor =
-    std::make_shared<BoldFontPainterForegroundFunctorImp>(kColorGreen);
+static const std::shared_ptr<PaintForegroundFunctorImp> kJsonStringPainterForegroundFunctor =
+    std::make_shared<PaintForegroundFunctorImp>(kColorGreen);
 
-static const std::shared_ptr<BoldFontPainterForegroundFunctorImp> kJsonKeyPainterForegroundFunctor =
-    std::make_shared<BoldFontPainterForegroundFunctorImp>(kColorPurple);
+static const std::shared_ptr<PaintForegroundFunctorImp> kJsonKeyPainterForegroundFunctor =
+    std::make_shared<PaintForegroundFunctorImp>(kColorPurple);
+
+static std::unordered_map<JsonNodeType, std::shared_ptr<PaintForegroundFunctor>>
+staticCreateFgMap()
+{
+    std::unordered_map<JsonNodeType, std::shared_ptr<PaintForegroundFunctor>> map{};
+    Algorithm::Map::insertNewOrAssert(map, JsonNodeType::Null, kJsonNullOrBoolPainterForegroundFunctor);
+    Algorithm::Map::insertNewOrAssert(map, JsonNodeType::Bool, kJsonNullOrBoolPainterForegroundFunctor);
+    Algorithm::Map::insertNewOrAssert(map, JsonNodeType::Number, kJsonNumberPainterForegroundFunctor);
+    Algorithm::Map::insertNewOrAssert(map, JsonNodeType::String, kJsonStringPainterForegroundFunctor);
+    Algorithm::Map::insertNewOrAssert(map, JsonNodeType::Key, kJsonKeyPainterForegroundFunctor);
+    return map;
+}
+
+static const std::unordered_map<JsonNodeType, std::shared_ptr<PaintForegroundFunctor>> kJsonNodeType_To_PaintFgFunctor = staticCreateFgMap();
 
 static const QLocale kLocale{};
 
@@ -247,25 +243,10 @@ struct MainWindow::Private
         self.m_textWidget->setResult(result);
 //        self.m_tabWidget->setHidden(false);
 //        self.m_textWidget->setVisible(true);
-        const QStringList& lineList = result.m_jsonText.split(QRegularExpression{"\\r?\\n"});
+        const QStringList& lineList = result.jsonText.split(QRegularExpression{"\\r?\\n"});
         std::vector<QString> lineVec{lineList.begin(), lineList.end()};
+        applyFormats(self, result);
         self.m_textView->setDoc(std::make_shared<TextViewDocument>(std::move(lineVec)));
-        if (false)
-        {
-            std::unordered_map<int, TextView::ForegroundFormatSet>& map =
-                self.m_textView->lineIndex_To_ForegroundFormatSet_Map();
-            {
-                const int lineIndex = 1;
-                TextView::ForegroundFormatSet& set = map[lineIndex];
-                assert(set.insert(LineFormatForeground{LineSegment{.charIndex = 4, .length = 10}, kJsonKeyPainterForegroundFunctor}).second);
-            }
-            {
-                const int lineIndex = 4;
-                TextView::ForegroundFormatSet& set = map[lineIndex];
-                assert(set.insert(LineFormatForeground{LineSegment{.charIndex = 16, .length = 13}, kJsonKeyPainterForegroundFunctor}).second);
-                assert(set.insert(LineFormatForeground{LineSegment{.charIndex = 31, .length = 10}, kJsonStringPainterForegroundFunctor}).second);
-            }
-        }
         self.m_textView->setVisible(true);
         self.m_fileCloseAction->setEnabled(true);
 
@@ -278,15 +259,33 @@ struct MainWindow::Private
     }
 
     static void
+    applyFormats(MainWindow& self, const PrettyWriterResult& result)
+    {
+        std::unordered_map<int, TextView::ForegroundFormatSet>& map = self.m_textView->lineIndex_To_ForegroundFormatSet_Map();
+        map.clear();
+
+        for (const PrettyWriterResult::JsonNodeLineSegment& s : result.jsonNodeLineSegmentVec)
+        {
+            TextView::ForegroundFormatSet& set = map[s.lineIndex];
+
+            const std::shared_ptr<PaintForegroundFunctor>& f =
+                Algorithm::Map::findOrAssert(kJsonNodeType_To_PaintFgFunctor, s.jsonNodeType);
+
+            Algorithm::Set::insertNewOrAssert(set, LineFormatForeground{s.seg, f});
+        }
+        // Intentional: Do not call self.m_textView->update() here, as self.m_textView->setDoc() will call it.
+    }
+
+    static void
     setStatusBarText(MainWindow& self, const PrettyWriterResult& result)
     {
         // In practice, RapidJSON does not append a find newline.
-        const int lineCount = 1 + result.m_jsonText.count(QLatin1Char{'\n'});
+        const int lineCount = 1 + result.jsonText.count(QLatin1Char{'\n'});
 
         const int graphemeCount =
-            QTextBoundaryFinders::countBoundaries(QTextBoundaryFinder::BoundaryType::Grapheme, result.m_jsonText);
+            QTextBoundaryFinders::countBoundaries(QTextBoundaryFinder::BoundaryType::Grapheme, result.jsonText);
 
-        const int byteCount = countBytes(result.m_jsonText);
+        const int byteCount = countBytes(result.jsonText);
 
         self.m_statusBarTextViewLabelBaseText =
             QString("%1 %2 | %3 Unicode %4 | %5 UTF-8 %6")

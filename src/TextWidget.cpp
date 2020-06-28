@@ -428,13 +428,13 @@ setResult(const PrettyWriterResult& result)
 {
     // Intentional: This method may only be called once!
     assert(m_plainTextLength < 0);
-    m_plainTextLength = result.m_jsonText.length();
+    m_plainTextLength = result.jsonText.length();
     m_plainTextEdit->setResult(result);
     QTextDocument* const doc = m_plainTextEdit->document();
-    const int formatRangeCount = result.m_formatRangeVec.size();
+    const int formatRangeCount = result.formatRangeVec.size();
     // Two is the maximum number of expected formats in a single line.  When/Why?  A key-value pair.
     for (int i = 0; i < formatRangeCount; i += 0) {
-        const QTextLayout::FormatRange& formatRange0 = result.m_formatRangeVec[i];
+        const QTextLayout::FormatRange& formatRange0 = result.formatRangeVec[i];
         const QTextBlock& textBlock = doc->findBlock(formatRange0.start);
         assert(textBlock.isValid());
         const int position = textBlock.position();
@@ -443,7 +443,7 @@ setResult(const PrettyWriterResult& result)
         // Always empty, but remember QVector uses implicit sharing.
         QVector<QTextLayout::FormatRange> textBlockFormatRangeVec = textLayout->formats();
         for (int j = i; j < formatRangeCount; ++j) {
-            const QTextLayout::FormatRange& formatRange = result.m_formatRangeVec[j];
+            const QTextLayout::FormatRange& formatRange = result.formatRangeVec[j];
             if (formatRange.start < position || formatRange.start >= position + length) {
                 break;
             }
@@ -457,7 +457,7 @@ setResult(const PrettyWriterResult& result)
     Private::afterUpdateDocumentFormats(*this);
     // TODO: Fix this bug: Ctrl+PageDown (next tab), Ctrl+PageUp (prev tab), Ctrl+F, type any char, <crash>
     qDebug() << "FindThreadWorker";
-    m_nullableFindTextThreadWorker = new FindThreadWorker{result.m_jsonText};
+    m_nullableFindTextThreadWorker = new FindThreadWorker{result.jsonText};
     // Ref: https://doc.qt.io/qt-5/qthread.html#details
     m_nullableFindTextThreadWorker->moveToThread(m_findTextThread);
 

@@ -107,6 +107,27 @@ struct Algorithm
         }
     };
 
+    struct Set
+    {
+        template<typename _Set, typename _Value>
+        static std::pair<typename _Set::iterator, bool>
+        insertNewOrAssert(_Set& __set, const _Value& __constRefValue)
+        {
+            const std::pair<typename _Set::iterator, bool> r = __set.insert(__constRefValue);
+            assert(r.second);
+            return r;
+        }
+
+        template<typename _Set, typename _Value>
+        static std::pair<typename _Set::iterator, bool>
+        insertNewOrAssert(_Set& __set, _Value&& __rvalueRefValue)
+        {
+            const std::pair<typename _Set::iterator, bool> r = __set.insert(__rvalueRefValue);
+            assert(r.second);
+            return r;
+        }
+    };
+
     struct Map
     {
         /**
@@ -125,7 +146,10 @@ struct Algorithm
          */
         template<typename _Map, typename _Key, typename _Value>
         static _Value
-        getOrDefault(const _Map& __map, _Key __key, _Value __defaultValue)
+        getOrDefault(const _Map& __map, const _Key& __key,
+                     // Intentional: This *must* be passed by value.  Pass by reference is dangerous if caller used a temporary value.
+                     // I watched a Facebook talk about C++ on Youtube a long time ago...
+                     _Value __defaultValue)
         {
             typename _Map::const_iterator __iter = __map.find(__key);
             if (__map.cend() == __iter) {
@@ -135,6 +159,36 @@ struct Algorithm
                 const _Value& __x = __iter->second;
                 return __x;
             }
+        }
+
+        template<typename _Map, typename _Key>
+        static const typename _Map::mapped_type&
+        findOrAssert(const _Map& __constRefMap, const _Key& __key)
+        {
+            const typename _Map::const_iterator __iter = __constRefMap.find(__key);
+            assert(__constRefMap.end() != __iter);
+            const typename _Map::mapped_type& __x = __iter->second;
+            return __x;
+        }
+
+        template<typename _Map, typename _Key>
+        static typename _Map::mapped_type&
+        findOrAssert(_Map& __refMap, const _Key& __key)
+        {
+            const typename _Map::iterator __iter = __refMap.find(__key);
+            assert(__refMap.end() != __iter);
+            typename _Map::mapped_type& __x = __iter->second;
+            return __x;
+        }
+
+        // Ref: https://en.cppreference.com/w/cpp/container/unordered_map/insert_or_assign
+        template<typename _Map, typename _Key, typename _Value>
+        static std::pair<typename _Map::iterator, bool>
+        insertNewOrAssert(_Map& map, const _Key& __key, _Value&& __value)
+        {
+            std::pair<typename _Map::iterator, bool> r = map.insert_or_assign(__key, __value);
+            assert(r.second);
+            return r;
         }
     };
 };

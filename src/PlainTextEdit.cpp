@@ -413,7 +413,7 @@ PlainTextEdit::
 setResult(const PrettyWriterResult& result)
 {
     m_result = result;
-    setPlainText(result.m_jsonText);
+    setPlainText(result.jsonText);
 }
 
 // public slot

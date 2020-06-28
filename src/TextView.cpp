@@ -354,6 +354,7 @@ setDoc(const std::shared_ptr<TextViewDocument>& doc)
     m_docView->setDoc(doc);
     m_textCursor->reset();
     m_isAfterSetDoc = true;
+    // Or: this->update()?
     viewport()->update();
 }
 
