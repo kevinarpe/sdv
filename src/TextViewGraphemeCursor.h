@@ -15,6 +15,10 @@ namespace SDV {
 
 class TextViewDocumentView;
 
+/**
+ * Tracks the location of the text cursor on single line of text.  This class is careful to "step" by full graphemes, instead of QChars.
+ * This helps with wide graphemes that use two QChars, such as emoji "😋".
+ */
 class TextViewGraphemeCursor
 {
 public:

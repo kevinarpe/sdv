@@ -24,18 +24,24 @@ struct TextViewTextCursor::Private
     slotHorizontalScrollBarActionTriggered(TextViewTextCursor& self,
                                            const QAbstractSlider::SliderAction action)
     {
-        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
-        // Intentional: Treat this as a move.  Horizontal scrolling shifts the on-screen position of text cursor.
-        updateAfterMove(self, pos);
+        if (self.m_isScrolling == false)
+        {
+            const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+            // Intentional: Treat this as a move.  Horizontal scrolling shifts the on-screen position of text cursor.
+            updateAfterMove(self, pos);
+        }
     }
 
     static void
     slotVerticalScrollBarActionTriggered(TextViewTextCursor& self,
                                          const QAbstractSlider::SliderAction action)
     {
-        const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
-        // Intentional: Treat this as a move.  Vertical scrolling shifts the on-screen position of text cursor.
-        updateAfterMove(self, pos);
+        if (self.m_isScrolling == false)
+        {
+            const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+            // Intentional: Treat this as a move.  Vertical scrolling shifts the on-screen position of text cursor.
+            updateAfterMove(self, pos);
+        }
     }
 
     static void
@@ -405,7 +411,7 @@ struct TextViewTextCursor::Private
             if (lineIndex != pos.pos.lineIndex)
             {
                 self.m_fontWidth.beforeGrapheme = 0;
-                scrollToMin(self.m_textView.horizontalScrollBar());
+                scrollToMin(self, self.m_textView.horizontalScrollBar());
                 self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
                 verticalScrollToEnsureVisible(self);
                 return true;
@@ -429,7 +435,7 @@ struct TextViewTextCursor::Private
         {
             self.m_fontWidth.beforeGrapheme = 0;
             self.m_graphemeCursor->home();
-            scrollToMin(self.m_textView.horizontalScrollBar());
+            scrollToMin(self, self.m_textView.horizontalScrollBar());
             return true;
         }
         return false;
@@ -459,8 +465,8 @@ struct TextViewTextCursor::Private
         {
             self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
             self.m_fontWidth.beforeGrapheme = 0;
-            scrollToMin(self.m_textView.horizontalScrollBar());
-            scrollToMin(self.m_textView.verticalScrollBar());
+            scrollToMin(self, self.m_textView.horizontalScrollBar());
+            scrollToMin(self, self.m_textView.verticalScrollBar());
             return true;
         }
         return false;
@@ -477,7 +483,7 @@ struct TextViewTextCursor::Private
         {
             self.m_graphemeCursor->setLineIndexThenEnd(lineIndex);
             horizontalScrollToEnsureVisible(self);
-            scrollToMax(self.m_textView.verticalScrollBar());
+            scrollToMax(self, self.m_textView.verticalScrollBar());
             return true;
         }
         return false;
@@ -525,7 +531,7 @@ struct TextViewTextCursor::Private
 
         if (lineIndex != pos.pos.lineIndex)
         {
-            scrollPage(self.m_textView.verticalScrollBar(), ScrollDirection::Up);
+            scrollPage(self, self.m_textView.verticalScrollBar(), ScrollDirection::Up);
             verticalMove(self, lineIndex);
             return true;
         }
@@ -542,7 +548,7 @@ struct TextViewTextCursor::Private
 
         if (lineIndex != pos.pos.lineIndex)
         {
-            scrollPage(self.m_textView.verticalScrollBar(), ScrollDirection::Down);
+            scrollPage(self, self.m_textView.verticalScrollBar(), ScrollDirection::Down);
             verticalMove(self, lineIndex);
             return true;
         }
@@ -556,7 +562,8 @@ struct TextViewTextCursor::Private
         const int lineIndex = self.m_textView.firstVisibleLineIndex();
         const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
 
-        if (lineIndex != pos.pos.lineIndex) {
+        if (lineIndex != pos.pos.lineIndex)
+        {
             verticalMove(self, lineIndex);
             return true;
         }
@@ -570,7 +577,8 @@ struct TextViewTextCursor::Private
         const int lineIndex = self.m_textView.lastFullyVisibleLineIndex();
         const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
 
-        if (lineIndex != pos.pos.lineIndex) {
+        if (lineIndex != pos.pos.lineIndex)
+        {
             verticalMove(self, lineIndex);
             return true;
         }
@@ -645,7 +653,7 @@ struct TextViewTextCursor::Private
         const QString& line = getLine(self);
         if (0 == origPos.pos.charIndex || line.isEmpty())
         {
-            scrollToMin(self.m_textView.horizontalScrollBar());
+            scrollToMin(self, self.m_textView.horizontalScrollBar());
         }
         else {
             const QFontMetricsF fontMetricsF{self.m_textView.font()};
@@ -674,7 +682,7 @@ struct TextViewTextCursor::Private
         if (fontWidth.beforeGrapheme < hbar->value())
         {
             // scroll left
-            scrollToValue(hbar, fontWidth.beforeGrapheme);
+            scrollToValue(self, hbar, fontWidth.beforeGrapheme);
         }
         else {
             const int width = qRound(fontWidth.beforeGrapheme + fontWidth.grapheme);
@@ -683,7 +691,7 @@ struct TextViewTextCursor::Private
             {
                 // scroll right
                 const int hbarValue = width - viewportWidth;
-                scrollToValue(hbar, hbarValue);
+                scrollToValue(self, hbar, hbarValue);
             }
         }
     }
@@ -705,48 +713,48 @@ struct TextViewTextCursor::Private
     }
 
     static void
-    scrollToMin(QScrollBar* const bar)
+    scrollToMin(TextViewTextCursor& self, QScrollBar* const bar)
     {
         const int value = bar->value();
         const int min = bar->minimum();
         if (value > min) {
-            scrollToValue(bar, min);
+            scrollToValue(self, bar, min);
         }
     }
 
     static void
-    scrollToMax(QScrollBar* const bar)
+    scrollToMax(TextViewTextCursor& self, QScrollBar* const bar)
     {
         const int value = bar->value();
         const int max = bar->maximum();
         if (value < max) {
-            scrollToValue(bar, max);
+            scrollToValue(self, bar, max);
         }
     }
 
     enum ScrollDirection { Up = -1, Left = Up, Down = +1, Right = Down };
 
     static void
-    scrollPage(QScrollBar* const bar, const ScrollDirection d)
+    scrollPage(TextViewTextCursor& self, QScrollBar* const bar, const ScrollDirection d)
     {
         const int prevValue = bar->value();
         const int value = prevValue + (d * bar->pageStep());
-        scrollToValue(bar, value);
+        scrollToValue(self, bar, value);
     }
 
     static void
-    scrollToValue(QScrollBar* const bar, const int value)
-    {
-        bar->blockSignals(true);
-        bar->setValue(value);
-        bar->blockSignals(false);
-    }
-
-    static void
-    scrollToLineIndex(const TextViewTextCursor& self, const int lineIndex)
+    scrollToLineIndex(TextViewTextCursor& self, const int lineIndex)
     {
         const int normalisedLineIndex = self.m_docView->findNormalisedLineIndex(lineIndex);
-        scrollToValue(self.m_textView.verticalScrollBar(), normalisedLineIndex);
+        scrollToValue(self, self.m_textView.verticalScrollBar(), normalisedLineIndex);
+    }
+
+    static void
+    scrollToValue(TextViewTextCursor& self, QScrollBar* const bar, const int value)
+    {
+        self.m_isScrolling = true;
+        bar->setValue(value);
+        self.m_isScrolling = false;
     }
 
     static void
@@ -802,13 +810,24 @@ struct TextViewTextCursor::Private
             const bool isShift = (Qt::KeyboardModifier::ShiftModifier == QGuiApplication::keyboardModifiers());
             if (isShift)
             {
-                const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
-                self.m_selection.begin = pos.pos;
+                // If there is an existing select, shift+left-mouse-click will only move selection end position.
+                // Else, shift+left-mouse-click will begin new selection from text cursor position *before* left-mouse-click.
+                if (self.m_selection.isValid() == false)
+                {
+                    const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+                    self.m_selection.begin = pos.pos;
+                    self.m_selection.end.invalidate();
+                }
             }
             else {
                 clearSelection(self);
             }
             mouseButtonPressOrMoveEvent(self, event);
+            // If text cursor position was not updated, then invalidate selection.
+            if (isShift && self.m_selection.end.isValid() == false)
+            {
+                self.m_selection.begin.invalidate();
+            }
             return StopEventPropagation::Yes;
         }
         return StopEventPropagation::No;
@@ -842,8 +861,17 @@ struct TextViewTextCursor::Private
         if (QEvent::Type::MouseButtonPress == event->type())
         {
             const bool isShift = (Qt::KeyboardModifier::ShiftModifier == QGuiApplication::keyboardModifiers());
-            if (false == isShift)
+            if (isShift)
             {
+                if (pos.pos.isEqual(self.m_selection.begin)) {
+                    // Zero-length selection is not allowed.
+                    self.m_selection.end.invalidate();
+                }
+                else {
+                    self.m_selection.end = pos.pos;
+                }
+            }
+            else {
                 self.m_selection.begin = pos.pos;
                 // Explicit: A single left mouse button click without shift key should *not* create a valid selection!
                 self.m_selection.end.invalidate();
@@ -882,7 +910,8 @@ TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentVie
       m_fontWidth{TextSegmentFontWidth{.beforeGrapheme = 0, .grapheme = 0}},
       m_selection{TextViewSelection::invalid()},
       m_isUpdate{false},
-      m_hasMoved{false}
+      m_hasMoved{false},
+      m_isScrolling{false}
 {
     textView.installEventFilter(this);
     slotSetBlinking(true);

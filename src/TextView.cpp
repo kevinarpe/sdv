@@ -159,7 +159,9 @@ TextView(QWidget* parent /*= nullptr*/)
       m_isAfterSetDoc{false},
       m_viewportFullyVisibleLineCount{0}, m_viewportVisibleLineCount{0},
       m_firstVisibleLineIndex{0}, m_lastFullyVisibleLineIndex{0}, m_lastVisibleLineIndex{0}
-{}
+{
+    Base::horizontalScrollBar()->setTracking(true);
+}
 
 // Required when using std::unique_ptr<> with forward declarations.
 // Ref: https://stackoverflow.com/a/6089065/257299
@@ -354,7 +356,7 @@ paintEvent(QPaintEvent* event)  // override
 
             const qreal lineSpacing = fontMetricsF.lineSpacing();
             // If hbar->value() is positive, then shift left.
-            const qreal x = -1 * horizontalScrollBar()->value();
+            const qreal x = -1.0 * horizontalScrollBar()->value();
             assert(x <= 0);
             qreal y = 0;
             const TextViewSelectionRange selectionRange = TextViewSelectionRange{m_textCursor->selection()};

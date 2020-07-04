@@ -197,6 +197,7 @@ const
         const int maxPositiveStepCount = static_cast<int>(m_visibleLineIndexVec.end() - iter);
         adjStepCount = std::min(stepCount, maxPositiveStepCount);
     }
+    // This is a rare use of operator[] on an iterator!  It is similar to: *(iter + adjStepCount)
     const int x = iter[adjStepCount];
     return x;
 }

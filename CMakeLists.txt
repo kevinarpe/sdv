@@ -5,8 +5,8 @@ project(sdv)
 # export CXX=/usr/bin/g++-10
 # export CC=/usr/bin/gcc-10
 # Ref: https://stackoverflow.com/a/17275650/257299
-set(CMAKE_C_COMPILER /usr/bin/gcc-10 CACHE PATH "" FORCE)
-set(CMAKE_CXX_COMPILER /usr/bin/g++-10 CACHE PATH "" FORCE)
+#set(CMAKE_C_COMPILER /usr/bin/gcc-10 CACHE PATH "" FORCE)
+#set(CMAKE_CXX_COMPILER /usr/bin/g++-10 CACHE PATH "" FORCE)
 
 # Ref: https://bytefreaks.net/programming-2/make-building-with-cmake-verbose
 #set(CMAKE_VERBOSE_MAKEFILE ON)

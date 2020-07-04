@@ -13,6 +13,7 @@
 #include "TextViewPosition.h"
 #include "TextViewDocumentView.h"
 #include "TextViewDocument.h"
+#include <QDebug>
 
 namespace SDV {
 
@@ -21,7 +22,11 @@ const QColor TextViewDecorator::kTextColor{Qt::GlobalColor::darkGray};
 
 struct TextViewDecorator::Private
 {
-    // TODO: Track horizontal scrollbar movement
+    static void
+    slotHorizontalScrollBarValueChanged(TextViewDecorator& self, const int value)
+    {
+        update(self);
+    }
 
     static void
     update(TextViewDecorator& self)
@@ -39,6 +44,8 @@ struct TextViewDecorator::Private
 
         const TextViewDocumentView::const_iterator firstIter = self.m_textView.docView().findOrAssert(firstVisibleLineIndex);
         const TextViewDocumentView::const_iterator lastIter = self.m_textView.docView().findOrAssert(lastVisibleLineIndex);
+        // If hbar->value() is positive, then shift left.
+        const qreal x = -1.0 * self.m_textView.horizontalScrollBar()->value();
 
         // Note: operator<= on random access iterator.  This will not work if we switch to unordered_set later.  :(
         for (auto lineIndexIter = firstIter; lineIndexIter <= lastIter; ++lineIndexIter)
@@ -56,14 +63,13 @@ struct TextViewDecorator::Private
                 const int indexOfExpanderPosition = Private::indexOfExpanderPosition(line);
                 JsonTreeNode& node = getFreeNode(self, lineSpacing, jsonNode);
                 const qreal y = self.m_textView.heightForVisibleLineIndex(lineIndex);
-                const qreal xOffset = self.m_textView.horizontalScrollBar()->value();
                 {
-                    const qreal x = fontMetricsF.horizontalAdvance(line, indexOfExpanderPosition);
-                    node.expander->move(QPointF{x - xOffset, y}.toPoint());
+                    const qreal width = fontMetricsF.horizontalAdvance(line, indexOfExpanderPosition);
+                    node.expander->move(QPointF{x + width, y}.toPoint());
                 }
                 {
-                    const qreal x = fontMetricsF.horizontalAdvance(line);
-                    node.sizeLabel->move(QPointF{x - xOffset, y}.toPoint());
+                    const qreal width = fontMetricsF.horizontalAdvance(line);
+                    node.sizeLabel->move(QPointF{x + width, y}.toPoint());
                 }
                 break;
             }
@@ -312,8 +318,10 @@ TextViewDecorator::
 TextViewDecorator(TextView& parent)
     : Base{&parent}, m_textView{parent}, m_textColor{kTextColor}
 {
-    // TODO: What about horizontal scrolling?  See: PlainTextEditDecorator
-
+    QObject::connect(parent.horizontalScrollBar(), &QScrollBar::valueChanged,
+                     [this](const int value) {
+                         Private::slotHorizontalScrollBarValueChanged(*this, value);
+                     });
     QObject::connect(&parent, &TextView::signalVisibleLinesChanged,
                      [this]() { Private::update(*this); });
 }

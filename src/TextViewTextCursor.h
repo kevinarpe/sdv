@@ -100,6 +100,8 @@ private:
     TextViewSelection m_selection;
     bool m_isUpdate;
     bool m_hasMoved;
+    /** true when scrolling programmatically */
+    bool m_isScrolling;
 };
 
 }  // namespace SDV
