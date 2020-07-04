@@ -22,9 +22,13 @@ public:
 
     const TextViewDocument& doc() const;
     void setDoc(const std::shared_ptr<TextViewDocument>& doc);
-    void setRangeVisible(int firstVisibleLineIndexInclusive, int lastVisibleLineIndexInclusive, bool isVisible);
 
-    const std::vector<int> visibleLineIndexVec() const { return m_visibleLineIndexVec; }
+    const std::vector<int>& visibleLineIndexVec() const { return m_visibleLineIndexVec; }
+
+    void showLine(const int lineIndex);
+    void hideLine(const int lineIndex);
+    void showLineRange(const int firstLineIndex, const int lastLineIndexInclusive);
+    void hideLineRange(const int firstLineIndex, const int lastLineIndexInclusive);
 
     int firstVisibleLineIndex() const;
     int lastVisibleLineIndex() const;
@@ -38,10 +42,10 @@ public:
      */
     int findNormalisedLineIndex(int lineIndex) const;
 
-    /** May return visibleLineEnd() */
+    /** May return visibleLineIndexVec().end() */
     const_iterator tryFind(int lineIndex) const;
     /** assert(false) if not found */
-    const_iterator find(int lineIndex) const;
+    const_iterator findOrAssert(int lineIndex) const;
 
 private:
     struct Private;

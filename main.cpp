@@ -103,9 +103,10 @@ int main(int argc, char *argv[])
     // @EmptyContainerAllowed
     QStringList filePathList = parser.values(fileOption);
     if (isStdinNotTerminal()) {
-        filePathList.append(QString{SDV::Constants::STDIN_FILE_NAME});
+        filePathList.append(SDV::Constants::kStdinFileName);
     }
-    if ( ! filePathList.isEmpty()) {
+
+    if (false == filePathList.isEmpty()) {
         // Be *very* carefuly about uniqueness and ordering.
         // Ideally, we want to preserve original ordering, but remove absolute file path dupes.
         // A bit tricky...
@@ -239,7 +240,7 @@ createSet(QStringList* filePathList)
 QString
 getAbsFilePath(const QString& filePath)
 {
-    if (SDV::Constants::STDIN_FILE_NAME == filePath) {
+    if (SDV::Constants::kStdinFileName == filePath) {
         return filePath;
     }
     else {

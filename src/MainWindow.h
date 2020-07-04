@@ -19,6 +19,7 @@ class StatusBar;
 class TextWidget;
 class TextView;
 class TextViewLineNumberArea;
+class TextViewDecorator;
 
 class MainWindow : public QMainWindow
 {
@@ -59,6 +60,7 @@ private:
     TextWidget* m_textWidget;
     TextView* m_textView;
     TextViewLineNumberArea* m_textViewLineNumberArea;
+    TextViewDecorator* m_textViewDecorator;
     // RAII guarantees when '*this' is destroyed, mainWindowManagerToken will also be destroyed.
     MainWindowManagerToken m_mainWindowManagerToken;
     QAction* m_fileCloseAction;

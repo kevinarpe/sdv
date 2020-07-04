@@ -7,29 +7,38 @@
 #include <algorithm>
 #include "TextViewDocument.h"
 #include "Algorithm.h"
+#include "CountingIterator.h"
 
 namespace SDV {
 
 struct TextViewDocumentView::Private
 {
     static std::vector<int>::iterator
-    find(TextViewDocumentView& self, const int lineIndex)
+    findOrAssert(TextViewDocumentView& self, const int lineIndex)
     {
         std::vector<int>::iterator iter =
             std::lower_bound(self.m_visibleLineIndexVec.begin(), self.m_visibleLineIndexVec.end(), lineIndex);
 
         assert(self.m_visibleLineIndexVec.end() != iter);
+        assert(lineIndex == *iter);
         return iter;
     }
 
     static std::vector<int>::const_iterator
-    cfind(const TextViewDocumentView& self, const int lineIndex)
+    findOrAssert(const TextViewDocumentView& self, const int lineIndex)
     {
         std::vector<int>::const_iterator iter =
             std::lower_bound(self.m_visibleLineIndexVec.begin(), self.m_visibleLineIndexVec.end(), lineIndex);
 
         assert(self.m_visibleLineIndexVec.end() != iter);
+        assert(lineIndex == *iter);
         return iter;
+    }
+
+    static void
+    assertValidLineIndex(const TextViewDocumentView& self, const int lineIndex)
+    {
+        assert(lineIndex >= 0 && lineIndex < self.m_doc->lineVec().size());
     }
 };
 
@@ -61,13 +70,95 @@ setDoc(const std::shared_ptr<TextViewDocument>& doc)
 // public
 void
 TextViewDocumentView::
-setRangeVisible(const int firstVisibleLineIndexInclusive, const int lastVisibleLineIndexInclusive, const bool isVisible)
+showLine(const int lineIndex)
 {
-    assert(firstVisibleLineIndexInclusive <= lastVisibleLineIndexInclusive);
-    auto first = Private::find(*this, firstVisibleLineIndexInclusive);
-    auto last = Private::find(*this, lastVisibleLineIndexInclusive);
-    std::fill(first, last, isVisible);
-    // TODO: How to notify observers of this change!?
+    Private::assertValidLineIndex(*this, lineIndex);
+
+    const std::vector<int>::const_iterator iter =
+        std::lower_bound(m_visibleLineIndexVec.begin(), m_visibleLineIndexVec.end(), lineIndex);
+
+    if (m_visibleLineIndexVec.end() == iter || lineIndex != *iter)
+    {
+        m_visibleLineIndexVec.insert(iter, lineIndex);
+    }
+}
+
+// public
+void
+TextViewDocumentView::
+hideLine(const int lineIndex)
+{
+    Private::assertValidLineIndex(*this, lineIndex);
+
+    const std::vector<int>::const_iterator iter =
+        std::lower_bound(m_visibleLineIndexVec.begin(), m_visibleLineIndexVec.end(), lineIndex);
+
+    if (m_visibleLineIndexVec.end() != iter && lineIndex == *iter)
+    {
+        m_visibleLineIndexVec.erase(iter);
+    }
+}
+
+// public
+void
+TextViewDocumentView::
+showLineRange(const int firstLineIndex, const int lastLineIndexInclusive)
+{
+    Private::assertValidLineIndex(*this, firstLineIndex);
+    Private::assertValidLineIndex(*this, lastLineIndexInclusive);
+    assert(firstLineIndex <= lastLineIndexInclusive);
+
+    const std::vector<int>::iterator lowerIter =
+        std::lower_bound(m_visibleLineIndexVec.begin(), m_visibleLineIndexVec.end(), firstLineIndex);
+
+    const std::vector<int>::const_iterator upperIter =
+        std::upper_bound(m_visibleLineIndexVec.begin(), m_visibleLineIndexVec.end(), lastLineIndexInclusive);
+
+    const int lineCount = lastLineIndexInclusive - firstLineIndex + 1;
+    if ((upperIter - lowerIter) == lineCount && firstLineIndex == *lowerIter && lastLineIndexInclusive == (*upperIter - 1))
+    {
+        // All values exists -- nothing to insert.
+        // @DebugBreakpoint
+        int dummy = 1;
+    }
+    else if (lowerIter == upperIter)
+    {
+        CountingIterator<int> begin{firstLineIndex};
+        CountingIterator<int> end{1 + lastLineIndexInclusive};
+        m_visibleLineIndexVec.insert(lowerIter, begin, end);
+    }
+    else {
+        int lineIndex = firstLineIndex;
+
+        for (std::vector<int>::iterator iter = lowerIter;
+             upperIter != iter;
+             ++iter, ++lineIndex)
+        {
+            if (m_visibleLineIndexVec.end() == iter || lineIndex != *iter)
+            {
+                m_visibleLineIndexVec.insert(iter, lineIndex);
+            }
+        }
+        assert(lastLineIndexInclusive == lineIndex);
+    }
+}
+
+// public
+void
+TextViewDocumentView::
+hideLineRange(const int firstLineIndex, const int lastLineIndexInclusive)
+{
+    Private::assertValidLineIndex(*this, firstLineIndex);
+    Private::assertValidLineIndex(*this, lastLineIndexInclusive);
+    assert(firstLineIndex <= lastLineIndexInclusive);
+
+    const std::vector<int>::iterator lowerIter =
+        std::lower_bound(m_visibleLineIndexVec.begin(), m_visibleLineIndexVec.end(), firstLineIndex);
+
+    const std::vector<int>::const_iterator upperIter =
+        std::upper_bound(m_visibleLineIndexVec.begin(), m_visibleLineIndexVec.end(), lastLineIndexInclusive);
+
+    m_visibleLineIndexVec.erase(lowerIter, upperIter);
 }
 
 // public
@@ -96,7 +187,7 @@ TextViewDocumentView::
 nextVisibleLineIndex(const int lineIndex, const int stepCount)
 const
 {
-    auto iter = Private::cfind(*this, lineIndex);
+    auto iter = Private::findOrAssert(*this, lineIndex);
     int adjStepCount = 0;
     if (stepCount < 0) {
         const int maxNegativeStepCount = static_cast<int>(m_visibleLineIndexVec.begin() - iter);
@@ -116,7 +207,12 @@ TextViewDocumentView::
 findNormalisedLineIndex(const int lineIndex)
 const
 {
-    auto iter = Private::cfind(*this, lineIndex);
+    // Avoid binary search if possible. :)
+    if (lineIndex < m_visibleLineIndexVec.size() && lineIndex == m_visibleLineIndexVec[lineIndex])
+    {
+        return lineIndex;
+    }
+    auto iter = Private::findOrAssert(*this, lineIndex);
     const int x = iter - m_visibleLineIndexVec.begin();
     return x;
 }
@@ -127,14 +223,14 @@ TextViewDocumentView::
 tryFind(const int lineIndex)
 const
 {
-    const auto iter = Private::cfind(*this, lineIndex);
+    const auto iter = Private::findOrAssert(*this, lineIndex);
     return iter;
 }
 
 // public
 TextViewDocumentView::const_iterator
 TextViewDocumentView::
-find(const int lineIndex)
+findOrAssert(const int lineIndex)
 const
 {
     const auto iter = tryFind(lineIndex);

@@ -26,6 +26,7 @@
 #include "TextViewTextCursor.h"
 #include "PaintForegroundFunctor.h"
 #include "PaintForegroundContextImp.h"
+#include "TextViewDecorator.h"
 
 namespace SDV {
 
@@ -239,13 +240,14 @@ struct MainWindow::Private
         rapidjson::StringBuffer sb{nullptr, static_cast<size_t>(bufferCapacity)};
         PrettyWriter2 pw{sb, static_cast<size_t>(bufferCapacity), self.m_formatMap};
         assert(doc.Accept(pw));
-        const PrettyWriterResult& result = pw.result();
-        self.m_textWidget->setResult(result);
+        const std::shared_ptr<JsonTree>& jsonTree = pw.result();
+//        self.m_textWidget->setResult(result);
 //        self.m_tabWidget->setHidden(false);
 //        self.m_textWidget->setVisible(true);
-        const QStringList& lineList = result.jsonText.split(QRegularExpression{"\\r?\\n"});
+        self.m_textViewDecorator->setJsonTree(jsonTree);
+        const QStringList& lineList = jsonTree->jsonText.split(QRegularExpression{"\\r?\\n"});
         std::vector<QString> lineVec{lineList.begin(), lineList.end()};
-        applyFormats(self, result);
+        applyFormats(self, jsonTree);
         self.m_textView->setDoc(std::make_shared<TextViewDocument>(std::move(lineVec)));
         self.m_textView->setVisible(true);
         self.m_fileCloseAction->setEnabled(true);
@@ -255,21 +257,21 @@ struct MainWindow::Private
             self.m_mainWindowManagerToken.getMainWindowManager().tryAddFileOpenRecent(self.m_absFilePath);
         }
         self.setWindowTitle(inputDescription + " - " + kWindowTitle);
-        setStatusBarText(self, result);
+        setStatusBarText(self, jsonTree);
     }
 
     static void
-    applyFormats(MainWindow& self, const PrettyWriterResult& result)
+    applyFormats(MainWindow& self, const std::shared_ptr<JsonTree>& jsonTree)
     {
         std::unordered_map<int, TextView::ForegroundFormatSet>& map = self.m_textView->lineIndex_To_ForegroundFormatSet_Map();
         map.clear();
 
-        for (const PrettyWriterResult::JsonNodeLineSegment& s : result.jsonNodeLineSegmentVec)
+        for (const JsonTree::JsonNodeLineSegment& s : jsonTree->jsonNodeLineSegmentVec)
         {
             TextView::ForegroundFormatSet& set = map[s.lineIndex];
 
             const std::shared_ptr<PaintForegroundFunctor>& f =
-                Algorithm::Map::findOrAssert(kJsonNodeType_To_PaintFgFunctor, s.jsonNodeType);
+                Algorithm::Map::getOrAssert(kJsonNodeType_To_PaintFgFunctor, s.jsonNodeType);
 
             Algorithm::Set::insertNewOrAssert(set, LineFormatForeground{s.seg, f});
         }
@@ -277,15 +279,12 @@ struct MainWindow::Private
     }
 
     static void
-    setStatusBarText(MainWindow& self, const PrettyWriterResult& result)
+    setStatusBarText(MainWindow& self, const std::shared_ptr<JsonTree>& jsonTree)
     {
         // In practice, RapidJSON does not append a find newline.
-        const int lineCount = 1 + result.jsonText.count(QLatin1Char{'\n'});
-
-        const int graphemeCount =
-            QTextBoundaryFinders::countBoundaries(QTextBoundaryFinder::BoundaryType::Grapheme, result.jsonText);
-
-        const int byteCount = countBytes(result.jsonText);
+        const int lineCount = 1 + jsonTree->jsonText.count(QLatin1Char{'\n'});
+        const int graphemeCount = QTextBoundaryFinders::countBoundaries(QTextBoundaryFinder::BoundaryType::Grapheme, jsonTree->jsonText);
+        const int byteCount = countBytes(jsonTree->jsonText);
 
         self.m_statusBarTextViewLabelBaseText =
             QString("%1 %2 | %3 Unicode %4 | %5 UTF-8 %6")
@@ -563,6 +562,7 @@ MainWindow(MainWindowManager& mainWindowManager,
         m_textView = new TextView{centralWidget};
         m_textView->setPaintForegroundContext(std::make_shared<PaintForegroundContextImp>());
         m_textViewLineNumberArea = new TextViewLineNumberArea{*m_textView, centralWidget};
+        m_textViewDecorator = new TextViewDecorator{*m_textView};
 
         QHBoxLayout* hboxLayout = new QHBoxLayout{};
         hboxLayout->setContentsMargins(0, 0, 0, 0);

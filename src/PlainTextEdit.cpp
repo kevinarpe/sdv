@@ -13,6 +13,8 @@
 #include "LineNumberAreaWidget.h"
 #include "PlainTextEditDecorator.h"
 
+// TODO: DELETE ME???
+
 namespace SDV {
 
 static const QPoint INVALID_POINT{-1, -1};
@@ -410,7 +412,7 @@ const
 // public
 void
 PlainTextEdit::
-setResult(const PrettyWriterResult& result)
+setResult(const JsonTree& result)
 {
     m_result = result;
     setPlainText(result.jsonText);

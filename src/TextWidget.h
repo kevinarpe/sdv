@@ -10,7 +10,7 @@
 #include <QThread>
 #include "FindThreadWorker.h"
 #include "FindLineEdit.h"
-#include "PrettyWriterResult.h"
+#include "JsonTree.h"
 
 namespace SDV {
 
@@ -32,7 +32,7 @@ public:
     ~TextWidget() override = default;
 
     PlainTextEdit* plainTextEdit() const { return m_plainTextEdit; }
-    void setResult(const PrettyWriterResult& result);
+    void setResult(const JsonTree& result);
 
 protected:
     void showEvent(QShowEvent* event) override;

@@ -22,6 +22,7 @@ public:
     {}
 
     const std::vector<QString>& lineVec() const { return m_lineVec; }
+//    const QString& line(int lineIndex) const;
 
 private:
     struct Private;

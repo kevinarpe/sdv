@@ -6,6 +6,7 @@
 #define SDV_ALGORITHM_H
 
 #include <cstddef>
+#include <utility>
 //#include <concepts>
 
 namespace SDV {
@@ -163,7 +164,7 @@ struct Algorithm
 
         template<typename _Map, typename _Key>
         static const typename _Map::mapped_type&
-        findOrAssert(const _Map& __constRefMap, const _Key& __key)
+        getOrAssert(const _Map& __constRefMap, const _Key& __key)
         {
             const typename _Map::const_iterator __iter = __constRefMap.find(__key);
             assert(__constRefMap.end() != __iter);
@@ -173,7 +174,7 @@ struct Algorithm
 
         template<typename _Map, typename _Key>
         static typename _Map::mapped_type&
-        findOrAssert(_Map& __refMap, const _Key& __key)
+        getOrAssert(_Map& __refMap, const _Key& __key)
         {
             const typename _Map::iterator __iter = __refMap.find(__key);
             assert(__refMap.end() != __iter);

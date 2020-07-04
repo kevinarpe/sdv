@@ -19,7 +19,7 @@
 #include "LineNumberAreaWidget.h"
 #include "PlainTextEdit.h"
 #include "CircleWidget.h"
-#include "TreeNodeExpanderWidget.h"
+#include "TreeNodeExpander.h"
 
 namespace SDV {
 
@@ -424,7 +424,7 @@ TextWidget(QWidget* parent /*= nullptr*/,
 // public
 void
 TextWidget::
-setResult(const PrettyWriterResult& result)
+setResult(const JsonTree& result)
 {
     // Intentional: This method may only be called once!
     assert(m_plainTextLength < 0);

@@ -14,6 +14,7 @@
 #include "GraphemeFinder.h"
 #include "PaintBackgroundFunctor.h"
 #include "PaintForegroundFunctor.h"
+#include "TextViewGraphemePosition.h"
 
 namespace SDV {
 
@@ -40,6 +41,8 @@ public:
     ~TextView() override; // = default
 
     void setDoc(const std::shared_ptr<TextViewDocument>& doc);
+
+    TextViewDocumentView& docView() { return *m_docView; }
     const TextViewDocumentView& docView() const { return *m_docView; }
 
     TextViewTextCursor& textCursor() { return *m_textCursor; }
@@ -168,20 +171,24 @@ public:
     // TODO: Add?: QRectF rectForLine(int visibleLineIndex) const;
     // TODO: Add?: QRectF rectForPosition(const TextViewPosition& pos) const;
 
-    struct Position
-    {
-        int lineIndex;
-        GraphemeFinder::Result grapheme;
-    };
-    Position positionForPoint(const QPointF& viewportPointF,
-                              GraphemeFinder::IncludeTextCursor includeTextCursor) const;
+    /**
+     * @param visibleLineIndex
+     *        must be visible in the current viewport position or assert
+     *
+     * @return number of pixels from top of viewport to top of line
+     */
+    qreal heightForVisibleLineIndex(int visibleLineIndex);
 
+    TextViewGraphemePosition
+    positionForPoint(const QPointF& viewportPointF,
+                     GraphemeFinder::IncludeTextCursor includeTextCursor)
+    const;
 signals:
     /**
      * Emitted when any of these change:
      * <br>{@link #firstVisibleLineIndex()}, {@link lastVisibleLineIndex()}, {@link lastFullyVisibleLineIndex()}
      */
-    void signalVisibleLineIndicesChanged();
+    void signalVisibleLinesChanged();
 
 protected:
     void paintEvent(QPaintEvent* event) override;

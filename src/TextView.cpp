@@ -19,6 +19,8 @@
 #include "PaintBackgroundFunctor.h"
 #include "PaintForegroundFunctor.h"
 #include "PaintContext.h"
+#include "TextViewSelectionRange.h"
+#include "TextViewLineSelection.h"
 
 namespace SDV {
 
@@ -57,6 +59,8 @@ struct TextView::Private
         assert(self.m_viewportVisibleLineCount >= 1
                && self.m_viewportVisibleLineCount >= self.m_viewportFullyVisibleLineCount
                && self.m_viewportVisibleLineCount - self.m_viewportFullyVisibleLineCount <= 1);
+
+        // TODO: If m_viewportFullyVisibleLineCount or self.m_docView->visibleLineIndexVec().size() *changes*, then call vbar->setMaximum()
     }
 
     static void afterSetDoc(TextView& self, const QFontMetricsF& fontMetricsF)
@@ -92,189 +96,6 @@ struct TextView::Private
         return x;
     }
 
-    struct SelectionRange
-    {
-        /** Inclusive and normalised for backward selection -- always less or equal to lastLineIndex. */
-        const int firstLineIndex;
-        /** Inclusive and normalised for backward selection -- always greater or equal to lastLineIndex. */
-        const int lastLineIndex;
-
-        explicit SelectionRange(const TextView& self)
-            : firstLineIndex{std::min(self.m_textCursor->selection().begin.lineIndex,
-                                      self.m_textCursor->selection().end.lineIndex)},
-              lastLineIndex{std::max(self.m_textCursor->selection().begin.lineIndex,
-                                     self.m_textCursor->selection().end.lineIndex)}
-        {
-            const TextViewSelection& selection = self.m_textCursor->selection();
-            if (selection.begin.isValid())
-            {
-                assert(false == selection.begin.isEqual(selection.end));
-            }
-        }
-
-        bool isValid() const { return (firstLineIndex >= 0 && lastLineIndex >= 0); }
-
-        bool
-        contains(const int lineIndex)
-        const
-        {
-            const bool x = (isValid() && lineIndex >= firstLineIndex && lineIndex <= lastLineIndex);
-            return x;
-        }
-    };
-
-    struct LineSelection
-    {
-        /** QChar count before selection */
-        int beforeLength;
-        /** QChar count of selection */
-        int length;
-        /** QChar count after selection */
-        int afterLength;
-        /**
-         * Does selection end on current line?
-         * <br>If true, do not highlight to right edge of viewport.
-         * <br>If false, highlight to right edge of viewport.
-         */
-        bool isEnd;
-
-        static LineSelection none(const QString& line) {
-            return LineSelection{.beforeLength = line.length(), .length = 0, .afterLength = 0, .isEnd = true};
-        }
-    };
-
-    /**
-     * @param line
-     *        Technically, we only need line.length(), but the full text line is nice for debugging! :)
-     */
-    static LineSelection
-    lineSelection(const TextView& self,
-                  const SelectionRange& selectionRange,
-                  const int lineIndex,
-                  const QString& line)
-    {
-        const TextViewSelection& selection = self.textCursor().selection();
-        if (false == selection.isValid() || false == selectionRange.contains(lineIndex))
-        {
-            const LineSelection& x = LineSelection::none(line);
-            return x;
-        }
-        // Forward selection
-        if (selection.begin.isLessThan(selection.end))
-        {
-            if (lineIndex == selection.begin.lineIndex)
-            {
-                if (lineIndex == selection.end.lineIndex)
-                {
-                    // Forward selection: First and last line are same.
-                    const LineSelection x{
-                        .beforeLength = selection.begin.charIndex,
-                        .length = selection.end.charIndex - selection.begin.charIndex,
-                        .afterLength = line.length() - selection.end.charIndex,
-                        .isEnd = true
-                    };
-                    return x;
-                }
-                else if (lineIndex < selection.end.lineIndex)
-                {
-                    // Forward selection: First line, but more than one line.
-                    const LineSelection x{
-                        .beforeLength = selection.begin.charIndex,
-                        .length = line.length() - selection.begin.charIndex,
-                        .afterLength = 0,
-                        .isEnd = false
-                    };
-                    return x;
-                }
-                else {
-                    assert(false);
-                }
-            }
-            else if (lineIndex < selection.end.lineIndex)
-            {
-                // Forward selection: Middle line, but not last.
-                const LineSelection x{
-                    .beforeLength = 0,
-                    .length = line.length(),
-                    .afterLength = 0,
-                    .isEnd = false
-                };
-                return x;
-            }
-            else if (lineIndex == selection.end.lineIndex)
-            {
-                // Forward selection: Last line of many.
-                const LineSelection x{
-                    .beforeLength = 0,
-                    .length = selection.end.charIndex,
-                    .afterLength = line.length() - selection.end.charIndex,
-                    .isEnd = true
-                };
-                return x;
-            }
-            else {
-                assert(false);
-            }
-        }
-        // Backward selection
-        else {
-            if (lineIndex == selection.end.lineIndex)
-            {
-                if (lineIndex == selection.begin.lineIndex)
-                {
-                    // Backward selection: First and last line are same.
-                    const LineSelection x{
-                        .beforeLength = selection.end.charIndex,
-                        .length = selection.begin.charIndex - selection.end.charIndex,
-                        .afterLength = line.length() - selection.begin.charIndex,
-                        .isEnd = true
-                    };
-                    return x;
-                }
-                else if (lineIndex < selection.begin.lineIndex)
-                {
-                    // Backward selection: First line, but more than one line.
-                    const LineSelection x{
-                        .beforeLength = selection.end.charIndex,
-                        .length = line.length() - selection.end.charIndex,
-                        .afterLength = 0,
-                        .isEnd = false
-                    };
-                    return x;
-                }
-                else {
-                    assert(false);
-                }
-            }
-            else if (lineIndex < selection.begin.lineIndex)
-            {
-                // Backward selection: Middle line, but not last.
-                const LineSelection x{
-                    .beforeLength = 0,
-                    .length = line.length(),
-                    .afterLength = 0,
-                    .isEnd = false
-                };
-                return x;
-            }
-            else if (lineIndex == selection.begin.lineIndex)
-            {
-                // Backward selection: Last line of many.
-                const LineSelection x{
-                    .beforeLength = 0,
-                    .length = selection.begin.charIndex,
-                    .afterLength = line.length() - selection.begin.charIndex,
-                    .isEnd = true
-                };
-                return x;
-            }
-            else {
-                assert(false);
-            }
-        }
-        assert(false);
-    }
-
     static void
     drawText(TextView& self, QPainter& painter, const bool paintTextCursor, QRectF& rectF,
              const QString& line, const int charIndex, const int length)
@@ -299,7 +120,7 @@ struct TextView::Private
     {
         QRectF boundingRectF{};
         painter.drawText(rectF, kNoAlign, text, &boundingRectF);
-        rectF.moveLeft(boundingRectF.right());
+        rectF.setLeft(boundingRectF.right());
     }
 
     static void
@@ -438,9 +259,39 @@ const
     return lineIndex;
 }
 
+qreal
+TextView::
+heightForVisibleLineIndex(const int visibleLineIndex)
+{
+    // Is input *possibly* a valid visible line index?
+    assert(visibleLineIndex >= m_firstVisibleLineIndex && visibleLineIndex <= m_lastVisibleLineIndex);
+    // Convert document line index to (normalised) viewport line index.
+    // Note: This method asserts if input is visible.
+    const int viewportLineIndex = m_docView->findNormalisedLineIndex(visibleLineIndex);
+    // Adjust for vertical scrollbar offset.  The first visible viewport line is always viewport line index zero.
+    const int viewportLineIndexAdj = viewportLineIndex - verticalScrollBar()->value();
+    const QFontMetricsF fontMetricsF{font()};
+    const qreal x = viewportLineIndexAdj * fontMetricsF.lineSpacing();
+    return x;
+}
+
+//QRectF
+//TextView::
+//rectForLine(const int visibleLineIndex)
+//const
+//{
+//    assert(visibleLineIndex >= m_firstVisibleLineIndex && visibleLineIndex <= m_lastVisibleLineIndex);
+//
+//    const int viewportLineIndex = m_docView->findNormalisedLineIndex(visibleLineIndex);
+//    const int viewportLineIndexAdj = viewportLineIndex - verticalScrollBar()->value();
+//    const QFontMetricsF fontMetricsF{font()};
+//    // What width?  Viewport... maxLineWidth?
+//    const QRectF x = QRectF{QPointF{0, viewportLineIndexAdj * fontMetricsF.lineSpacing()}, QSizeF{}};
+//    return x;
+//}
+
 // public
-//TextViewPosition
-TextView::Position
+TextViewGraphemePosition
 TextView::
 positionForPoint(const QPointF& viewportPointF,
                  GraphemeFinder::IncludeTextCursor includeTextCursor)
@@ -454,7 +305,13 @@ const
     const GraphemeFinder::Result r =
         m_graphemeFinder->positionForFontWidth(line, fontMetricsF, viewportPointF.x(), includeTextCursor);
 
-    const Position& x = Position{.lineIndex = lineIndex, .grapheme = r};
+    const TextViewGraphemePosition& x =
+        TextViewGraphemePosition{
+            .pos = TextViewPosition{.lineIndex = lineIndex, .charIndex = r.charIndex},
+            .graphemeIndex = r.graphemeIndex,
+            .grapheme = r.grapheme,
+            .isEndOfLine = r.isEndOfLine
+        };
     return x;
 }
 
@@ -476,12 +333,14 @@ paintEvent(QPaintEvent* event)  // override
     const QPalette& palette = this->palette();
     QPainter painter{viewport()};
     painter.setFont(font());
-    const bool isOnlyTextCursorUpdate = m_textCursor->isUpdate() && event->rect() == m_textCursorRect;
+    // @Debug
+    const QRect& eventRect = event->rect();
+    const bool isOnlyTextCursorUpdate = m_textCursor->isUpdate() && eventRect == m_textCursorRect;
     // TODO: Refactor this into private functions!
-    if (false == isOnlyTextCursorUpdate)
+    if (false == isOnlyTextCursorUpdate)  // can we have an early exit (update cursor only)... or what?  this block is HORRIBLE.
     {
         const QBrush& bgBrush = QBrush{palette.color(QPalette::ColorRole::Base)};
-        painter.fillRect(event->rect(), bgBrush);
+        painter.fillRect(eventRect, bgBrush);
         const bool isTextCursorLineBgColorEnabled = (bgBrush != m_textCursorLineBackgroundBrush);
 
         if (m_docView->visibleLineIndexVec().empty())
@@ -496,11 +355,12 @@ paintEvent(QPaintEvent* event)  // override
             const qreal lineSpacing = fontMetricsF.lineSpacing();
             // If hbar->value() is positive, then shift left.
             const qreal x = -1 * horizontalScrollBar()->value();
-            // Intentional: drawText() expects y as *bottom* of text line.
-            qreal y = fontMetricsF.ascent();
-            const Private::SelectionRange selectionRange = Private::SelectionRange{*this};
+            assert(x <= 0);
+            qreal y = 0;
+            const TextViewSelectionRange selectionRange = TextViewSelectionRange{m_textCursor->selection()};
             const std::vector<QString>& lineVec = m_docView->doc().lineVec();
             const TextViewGraphemePosition& textCursorPos = m_textCursor->position();
+            const qreal viewportWidth = viewport()->width();
             bool isFirstPaintBackground = true;
             bool isFirstPaintForeground = true;
             const std::vector<int>& visibleLineIndexVec = m_docView->visibleLineIndexVec();
@@ -517,7 +377,7 @@ paintEvent(QPaintEvent* event)  // override
             {
                 const int lineIndex = m_lastFullyVisibleLineIndex = m_lastVisibleLineIndex = *lineIndexIter;
                 const QString& line = lineVec[lineIndex];
-                const bool paintTextCursor =
+                const bool paintTextCursor =  // Do we need to paint the text cursor?  Then explain each condition.
                     (textCursorPos.pos.lineIndex == lineIndex && (m_textCursorRectF.isValid() == false || m_textCursor->hasMoved()));
                 if (paintTextCursor)
                 {
@@ -557,15 +417,14 @@ paintEvent(QPaintEvent* event)  // override
                 // From experience, the background (and borders) should be drawn first, then text.  Why?  Sub-pixel
                 // discrepancies will blemish segments.
 
+                const QRectF lineRectF = QRectF{QPointF{x, y},
+                                                // Note: Subtract x because x <= 0
+                                                QSizeF{viewportWidth - x, lineSpacing}};
+
                 // Draw text cursor line (background)
                 if (isTextCursorLineBgColorEnabled && textCursorPos.pos.lineIndex == lineIndex)
                 {
-                    // Intentional: Add x because x <= 0
-                    const qreal width = viewport()->width() + x;
-                    const QRectF& rectF = QRectF{QPointF{x, y - fontMetricsF.ascent()},
-                                                 QSizeF{width, lineSpacing}};
-
-                    painter.fillRect(rectF, m_textCursorLineBackgroundBrush);
+                    painter.fillRect(lineRectF, m_textCursorLineBackgroundBrush);
                     if (paintTextCursor) {
                         m_textCursorPainterInvisible.fillRect(m_textCursorPixmapRectF, m_textCursorLineBackgroundBrush);
                     }
@@ -582,14 +441,11 @@ paintEvent(QPaintEvent* event)  // override
                                 m_paintBackgroundContext->update(*this);
                             }
                         }
-                        QRectF rectF = QRectF{QPointF{x, y - fontMetricsF.ascent()},
-                                              QSizeF{qreal(viewport()->width()), lineSpacing}};
-
                         const BackgroundFormatSet& formatSet = iter->second;
                         for (const LineFormatBackground& format : formatSet)
                         {
-                            QRectF textBoundingRectF{rectF};
-                            textBoundingRectF.moveLeft(fontMetricsF.horizontalAdvance(line, format.seg.charIndex));
+                            QRectF textBoundingRectF{lineRectF};
+                            textBoundingRectF.setLeft(fontMetricsF.horizontalAdvance(line, format.seg.charIndex));
                             const QString& text = line.mid(format.seg.charIndex, format.seg.length);
                             textBoundingRectF.setWidth(fontMetricsF.horizontalAdvance(text));
                             painter.save();
@@ -607,7 +463,7 @@ paintEvent(QPaintEvent* event)  // override
                     }
                 }
                 // Draw text selection (background)
-                const Private::LineSelection lineSelection = Private::lineSelection(*this, selectionRange, lineIndex, line);
+                const TextViewLineSelection lineSelection = TextViewLineSelection::create(selectionRange, lineIndex, line);
 
                 // If any selection exists on this line, only paint the background.
                 if (lineSelection.length > 0 || lineSelection.isEnd == false)
@@ -620,9 +476,7 @@ paintEvent(QPaintEvent* event)  // override
 
                     if (lineSelection.length > 0)
                     {
-                        const QRectF& rectF =
-                            QRectF{QPointF{x + beforeSelectedWidth, y - fontMetricsF.ascent()},
-                                   QSizeF{selectedWidth, lineSpacing}};
+                        const QRectF& rectF = QRectF{QPointF{x + beforeSelectedWidth, y}, QSizeF{selectedWidth, lineSpacing}};
 
                         painter.fillRect(rectF, m_selectedTextBackgroundBrush);
 
@@ -640,12 +494,11 @@ paintEvent(QPaintEvent* event)  // override
                         const qreal afterSelectedWidth = fontMetricsF.horizontalAdvance(afterSelectedText);
                         const qreal x2 = x + beforeSelectedWidth + selectedWidth + afterSelectedWidth;
 
-                        if (viewport()->width() - x2 > 0.0)
+                        if (viewportWidth - x2 > 0.0)
                         {
-                            // Intentional: Add x2 because x2 <= 0.
-                            const qreal width = viewport()->width() + x2;
-                            const QRectF& rectF = QRectF{QPointF{x2, y - fontMetricsF.ascent()},
-                                                         QSizeF{width, lineSpacing}};
+                            const QRectF& rectF = QRectF{QPointF{x2, y},
+                                                         // Intentional: Add x2 because x2 <= 0
+                                                         QSizeF{viewportWidth + x2, lineSpacing}};
 
                             painter.fillRect(rectF, m_selectedTextBackgroundBrush);
 
@@ -659,9 +512,7 @@ paintEvent(QPaintEvent* event)  // override
                 }
                 // Draw text
                 {
-                    QRectF rectF = QRectF{QPointF{x, y - fontMetricsF.ascent()},
-                                          QSizeF{qreal(viewport()->width()), lineSpacing}};
-
+                    QRectF rectF{lineRectF};
                     auto iter = m_lineIndex_To_ForegroundFormatSet_Map.find(lineIndex);
 
                     if (m_lineIndex_To_ForegroundFormatSet_Map.end() == iter || iter->second.empty())
@@ -716,7 +567,7 @@ paintEvent(QPaintEvent* event)  // override
             }
             if (first != m_firstVisibleLineIndex || lastFull != m_lastFullyVisibleLineIndex || last != m_lastVisibleLineIndex)
             {
-                emit signalVisibleLineIndicesChanged();
+                emit signalVisibleLinesChanged();
             }
         }
     }

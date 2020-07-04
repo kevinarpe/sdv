@@ -13,8 +13,18 @@ const IsRichText IsRichText::YES{true};
 const IsRichText IsRichText::NO{false};
 
 // public static
-const QLatin1Char
-Constants::
-STDIN_FILE_NAME{'-'};
+const QString Constants::kStdinFileName{QLatin1Char{'-'}};
+
+// public static
+const QString Constants::Json::kObjectBegin{QLatin1Char{'{'}};
+
+// public static
+const QString Constants::Json::kObjectEnd{QLatin1Char{'}'}};
+
+// public static
+const QString Constants::Json::kArrayBegin{QLatin1Char{'['}};
+
+// public static
+const QString Constants::Json::kArrayEnd{QLatin1Char{']'}};
 
 }  // namespace SDV

@@ -7,10 +7,11 @@
 #include <QScrollBar>
 #include <QDebug>
 #include "PlainTextEdit.h"
-#include "TreeNodeExpanderWidget.h"
+#include "TreeNodeExpander.h"
 #include "JsonNode.h"
 #include "Algorithm.h"
 
+// TODO: DELETE ME???
 namespace SDV {
 
 struct PlainTextEditDecorator::Private
@@ -77,7 +78,7 @@ struct PlainTextEditDecorator::Private
         const QString& firstText = firstVisibleBlock.text();
         const QTextBlock& lastVisibleBlock = self.m_parent.tryGetLastVisibleBlock();
         const QString& lastText = lastVisibleBlock.text();
-        const PrettyWriterResult& result = self.m_parent.result();
+        const JsonTree& result = self.m_parent.result();
 
         for (QTextBlock textBlock = firstVisibleBlock;
              textBlock.isValid() && textBlock.blockNumber() <= lastVisibleBlock.blockNumber();
@@ -87,7 +88,7 @@ struct PlainTextEditDecorator::Private
                 continue;
             }
             const int lineIndex = textBlock.blockNumber();
-            const QVector<JsonNode*>& nodeVec = result.lineIndex_To_NodeVec[lineIndex];
+            const std::vector<JsonNode*>& nodeVec = result.lineIndex_To_NodeVec[lineIndex];
             for (JsonNode* const jsonNode : nodeVec)
             {
                 const QRectF& z = self.m_parent.blockBoundingGeometry(textBlock).translated(self.m_parent.contentOffset());
@@ -147,7 +148,7 @@ struct PlainTextEditDecorator::Private
     static bool
     isExpanded(const PlainTextEditDecorator& self, JsonNode* const jsonNode)
     {
-        const bool x = Algorithm::Map::getOrDefault(self.m_jsonNodeToIsExpandedMap, jsonNode, true);
+        const bool x = Algorithm::Map::getOrDefault(self.m_jsonNode_To_IsExpanded_Map, jsonNode, true);
 //        if (jsonNode->optionalParent()) {
 //            qDebug() << "isExpanded:" << self.m_parent.result().m_nodeToPosMap[jsonNode].lineIndex << ":" << jsonNode->optionalParent().value()->text() << "." << jsonNode->text() << ":" << x;
 //        }
@@ -157,7 +158,7 @@ struct PlainTextEditDecorator::Private
     static int
     indexOfExpanderPosition(const QString& text)
     {
-        const size_t i = Algorithm::findFirstIndexIf(text, [](const QChar& ch) { return !ch.isSpace(); });
+        const size_t i = Algorithm::findFirstIndexIf(text, [](const QChar& ch) { return false == ch.isSpace(); });
         if (i >= 2) {
             return i - 2;
         }
@@ -176,7 +177,7 @@ struct PlainTextEditDecorator::Private
             QObject::disconnect(treeNode.m_expanderConnection);
         }
         treeNode.m_expanderConnection =
-            QObject::connect(treeNode.m_expander, &TreeNodeExpanderWidget::signalIsExpanded,
+            QObject::connect(treeNode.m_expander, &TreeNodeExpander::signalExpandedChanged,
                              [&self, jsonNode](const bool isExpanded) { slotSetExpanded(self, jsonNode, isExpanded); });
         return treeNode;
     }
@@ -184,12 +185,13 @@ struct PlainTextEditDecorator::Private
     static TreeNode&
     getFreeTreeNode0(PlainTextEditDecorator& self, const qreal textBlockMinHeight, JsonNode* jsonNode)
     {
-        if (self.m_freeTreeNodeVec.empty()) {//<<newline
+        if (self.m_freeTreeNodeVec.empty())
+        {
             TreeNode& x =
                 self.m_usedTreeNodeVec.emplace_back(
                     TreeNode{
                         .m_jsonNode = jsonNode,
-                        .m_expander = newTreeNodeExpanderWidget(self, textBlockMinHeight),
+                        .m_expander = newTreeNodeExpander(self, textBlockMinHeight),
                         .m_sizeLabel = newQLabel(self, jsonNode)
                     });
             return x;
@@ -204,10 +206,10 @@ struct PlainTextEditDecorator::Private
         }
     }
 
-    static TreeNodeExpanderWidget*
-    newTreeNodeExpanderWidget(PlainTextEditDecorator& self, const qreal textBlockMinHeight)
+    static TreeNodeExpander*
+    newTreeNodeExpander(PlainTextEditDecorator& self, const qreal textBlockMinHeight)
     {
-        TreeNodeExpanderWidget* const w = new TreeNodeExpanderWidget{getParent(self)};
+        TreeNodeExpander* const w = new TreeNodeExpander{getParent(self)};
         w->setFixedSize(QSizeF{textBlockMinHeight, textBlockMinHeight}.toSize());
         w->show();
         return w;
@@ -218,13 +220,13 @@ struct PlainTextEditDecorator::Private
     {
         const bool prevIsExpanded = Private::isExpanded(self, jsonNode);
         assert(prevIsExpanded != isExpanded);
-        self.m_jsonNodeToIsExpandedMap[jsonNode] = isExpanded;
-        const PrettyWriterResult& result = self.m_parent.result();
+        self.m_jsonNode_To_IsExpanded_Map[jsonNode] = isExpanded;
+        const JsonTree& result = self.m_parent.result();
         if (isExpanded) {
-            JsonNode* const firstChild = jsonNode->childVec().first();
-            const PrettyWriterResult::Pos& firstPos = result.nodeToPosMap[firstChild];
-            JsonNode* const lastChild = jsonNode->childVec().last();
-            const PrettyWriterResult::Pos& lastPos = result.nodeToPosMap[lastChild];
+            JsonNode* const firstChild = jsonNode->childVec().front();
+            const TextViewPosition& firstPos = Algorithm::Map::getOrAssert(result.nodeToPosMap, firstChild);
+            JsonNode* const lastChild = jsonNode->childVec().back();
+            const TextViewPosition& lastPos = Algorithm::Map::getOrAssert(result.nodeToPosMap, lastChild);
             assert(firstPos.lineIndex <= lastPos.lineIndex);
             const QTextBlock& textBlock0 = self.m_parent.document()->findBlockByLineNumber(firstPos.lineIndex);
             QTextBlock textBlock = textBlock0;
@@ -233,9 +235,9 @@ struct PlainTextEditDecorator::Private
                  ++lineIndex, textBlock = textBlock.next())
             {
                 assert(textBlock.isValid());
-                const QVector<JsonNode*>& lineNodeVec = result.lineIndex_To_NodeVec[lineIndex];
-                assert( ! lineNodeVec.isEmpty());
-                QVector<JsonNode*>::const_iterator found = std::find_if(lineNodeVec.begin(), lineNodeVec.end(), &Private::isExpandable);
+                const std::vector<JsonNode*>& lineNodeVec = result.lineIndex_To_NodeVec[lineIndex];
+                assert(lineNodeVec.empty() == false);
+                std::vector<JsonNode*>::const_iterator found = std::find_if(lineNodeVec.begin(), lineNodeVec.end(), &Private::isExpandable);
                 if (lineNodeVec.end() == found) {
                     textBlock.setVisible(true);
                 }
@@ -245,8 +247,8 @@ struct PlainTextEditDecorator::Private
                         textBlock.setVisible(true);
                     }
                     else {
-                        JsonNode* const lastChild2 = expandableLineNode->childVec().last();
-                        const PrettyWriterResult::Pos& lastPos2 = result.nodeToPosMap[lastChild2];
+                        JsonNode* const lastChild2 = expandableLineNode->childVec().back();
+                        const TextViewPosition& lastPos2 = Algorithm::Map::getOrAssert(result.nodeToPosMap, lastChild2);
                         lineIndex = lastPos2.lineIndex - 1;
                         textBlock = self.m_parent.document()->findBlockByLineNumber(lineIndex);
                     }
@@ -254,10 +256,10 @@ struct PlainTextEditDecorator::Private
             }
         }
         else {
-            JsonNode* const firstChild = jsonNode->childVec().first();
-            const PrettyWriterResult::Pos& firstPos = result.nodeToPosMap[firstChild];
-            JsonNode* const lastChild = jsonNode->childVec().last();
-            const PrettyWriterResult::Pos& lastPos = result.nodeToPosMap[lastChild];
+            JsonNode* const firstChild = jsonNode->childVec().front();
+            const TextViewPosition& firstPos = Algorithm::Map::getOrAssert(result.nodeToPosMap, firstChild);
+            JsonNode* const lastChild = jsonNode->childVec().back();
+            const TextViewPosition& lastPos = Algorithm::Map::getOrAssert(result.nodeToPosMap, lastChild);
             assert(firstPos.lineIndex <= lastPos.lineIndex);
             const QTextBlock& textBlock0 = self.m_parent.document()->findBlockByLineNumber(firstPos.lineIndex);
             QTextBlock textBlock = textBlock0;

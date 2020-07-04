@@ -5,8 +5,7 @@
 #ifndef SDV_CONSTANTS_H
 #define SDV_CONSTANTS_H
 
-#include <QChar>
-#include <Qt>
+#include <QString>
 
 namespace SDV {
 
@@ -41,7 +40,15 @@ private:
 
 struct Constants
 {
-    static const QLatin1Char STDIN_FILE_NAME; // {'-'}
+    static const QString kStdinFileName;  // {QLatin1Char{'-'}}
+
+    struct Json
+    {
+        static const QString kObjectBegin;  // {QLatin1Char{'{'}
+        static const QString kObjectEnd;    // {QLatin1Char{'}'}
+        static const QString kArrayBegin;   // {QLatin1Char{'['}
+        static const QString kArrayEnd;     // {QLatin1Char{']'}
+    };
 };
 
 }  // namespace SDV

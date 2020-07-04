@@ -108,7 +108,7 @@ struct TextViewTextCursor::Private
                 verticalScrollToEnsureVisible(self);
                 const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
                 const std::vector<QString>& textLineVec = self.m_docView->doc().lineVec();
-                const auto iter0 = self.m_docView->find(origPos.pos.lineIndex);
+                const auto iter0 = self.m_docView->findOrAssert(origPos.pos.lineIndex);
                 const std::vector<int>& visibleLineIndexVec = self.m_docView->visibleLineIndexVec();
 
                 for (auto iter = iter0 ; visibleLineIndexVec.end() != iter ; ++iter)
@@ -895,7 +895,7 @@ TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentVie
         [this](int action) {
             Private::slotVerticalScrollBarActionTriggered(*this, static_cast<QAbstractSlider::SliderAction>(action));
         });
-    QObject::connect(&textView, &TextView::signalVisibleLineIndicesChanged,
+    QObject::connect(&textView, &TextView::signalVisibleLinesChanged,
         [this]() { Private::slotVisibleLineIndicesChanged(*this); });
 }
 

@@ -6,14 +6,14 @@
 #define SDV_PLAINTEXTEDITDECORATOR_H
 
 #include <QObject>
-#include "PrettyWriterResult.h"
 class QLabel;
 
+// TODO: DELETE ME???
 namespace SDV {
 
 class PlainTextEdit;
 class JsonNode;
-class TreeNodeExpanderWidget;
+class TreeNodeExpander;
 
 class PlainTextEditDecorator : public QObject
 {
@@ -21,7 +21,7 @@ class PlainTextEditDecorator : public QObject
 
 public:
     using Base = QObject;
-    PlainTextEditDecorator(PlainTextEdit& action);
+    PlainTextEditDecorator(PlainTextEdit& parent);
     ~PlainTextEditDecorator() override = default;
 
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -34,14 +34,14 @@ private:
     struct TreeNode
     {
         JsonNode* m_jsonNode;
-        TreeNodeExpanderWidget* m_expander;
+        TreeNodeExpander* m_expander;
         QMetaObject::Connection m_expanderConnection;
         QLabel* m_sizeLabel;
     };
     std::vector<TreeNode> m_freeTreeNodeVec;
     std::vector<TreeNode> m_usedTreeNodeVec;
     qreal m_textBlockMinHeight;
-    std::unordered_map<JsonNode*, bool> m_jsonNodeToIsExpandedMap;
+    std::unordered_map<JsonNode*, bool> m_jsonNode_To_IsExpanded_Map;
 };
 
 }  // namespace SDV

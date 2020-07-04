@@ -9,7 +9,7 @@
 #include <QPlainTextEdit>
 #include <QTextBlock>
 #include "IWidgetWithLineNumberArea.h"
-#include "PrettyWriterResult.h"
+#include "JsonTree.h"
 class QLabel;
 
 namespace SDV {
@@ -39,8 +39,8 @@ public:
     QTextBlock tryGetFirstVisibleBlock() const;
     QTextBlock tryGetLastVisibleBlock() const;
     QTextBlock tryGetLastFullyVisibleBlock() const;
-    void setResult(const PrettyWriterResult& result);
-    const PrettyWriterResult& result() const { return m_result; }
+    void setResult(const JsonTree& result);
+    const JsonTree& result() const { return m_result; }
 
 public slots:
     void slotScrollTopLeft();
@@ -73,7 +73,7 @@ private:
     QPoint m_lastMouseMovePoint;
     int m_lastMouseOverBlockIndex;
     LineNumberAreaWidget* m_lineNumberAreaWidget;
-    PrettyWriterResult m_result;
+    JsonTree m_result;
     PlainTextEditDecorator* m_decorator;
 };
 

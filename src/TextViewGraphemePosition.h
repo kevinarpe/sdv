@@ -13,7 +13,7 @@ namespace SDV {
 struct TextViewGraphemePosition
 {
     /** Grapheme when cursor is at end-of-line */
-    static const QString kEndOfLineGrapheme;  // {kEndOfLineChar}
+    static const QString kEndOfLineGrapheme;  // {QLatin1Char{' '}}
 
     TextViewPosition pos;
     /**

@@ -8,11 +8,11 @@ namespace SDV {
 
 // public
 JsonNode::
-JsonNode(std::optional<JsonNode*> optionalParent, JsonNodeType type, const QString& text)
-    : m_optionalParent{optionalParent}, m_type{type}, m_text{text}
+JsonNode(JsonNode* nullableParent, JsonNodeType type, const QString& text)
+    : m_nullableParent{nullableParent}, m_type{type}, m_text{text}
 {
-    if (optionalParent) {
-        (*optionalParent)->m_childVec.append(this);
+    if (nullptr != nullableParent) {
+        nullableParent->m_childVec.push_back(this);
     }
 }
 
@@ -20,7 +20,9 @@ JsonNode(std::optional<JsonNode*> optionalParent, JsonNodeType type, const QStri
 JsonNode::
 ~JsonNode()
 {
-    qDeleteAll(m_childVec);
+    for (JsonNode* n : m_childVec) {
+        delete n;
+    }
 }
 
 }  // namespace SDV

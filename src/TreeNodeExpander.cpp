@@ -2,16 +2,17 @@
 // Created by kca on 25/5/2020.
 //
 
-#include "TreeNodeExpanderWidget.h"
+#include "TreeNodeExpander.h"
 #include <QPaintEvent>
 #include <QPainter>
 #include <QDebug>
+#include <QGuiApplication>
 
 namespace SDV {
 
 // public explicit
-TreeNodeExpanderWidget::
-TreeNodeExpanderWidget(QWidget* parent /*= nullptr*/, Qt::WindowFlags f /*= Qt::WindowFlags()*/)
+TreeNodeExpander::
+TreeNodeExpander(QWidget* parent /*= nullptr*/, Qt::WindowFlags f /*= Qt::WindowFlags()*/)
     : Base{parent, f}, m_isExpanded{false}, m_isMouseOver{false}
 {
     // Enable QEvent::Type::HoverEnter & HoverLeave
@@ -20,9 +21,22 @@ TreeNodeExpanderWidget(QWidget* parent /*= nullptr*/, Qt::WindowFlags f /*= Qt::
     setCursor(Qt::CursorShape::ArrowCursor);
 }
 
+// public slot
+void
+TreeNodeExpander::
+slotSetExpanded(const bool isExpanded)
+{
+    if (isExpanded == m_isExpanded) {
+        return;
+    }
+    m_isExpanded = isExpanded;
+    update();
+    emit signalExpandedChanged(isExpanded);
+}
+
 // protected
 void
-TreeNodeExpanderWidget::
+TreeNodeExpander::
 paintEvent(QPaintEvent* event)  // override
 {
     QPainter painter{this};
@@ -33,13 +47,15 @@ paintEvent(QPaintEvent* event)  // override
     // provide good contrast with Window and Base."
     const QPalette& palette = this->palette();
     const QColor& colorText = palette.color(QPalette::ColorRole::Text);
-    const QColor& colorDark = palette.color(QPalette::ColorRole::Dark);
-    // I have a 4k monitor.  It seems like 3.0 pen width looks good.
-    const qreal penWidth = 3.0;
-    painter.setPen(QPen{m_isMouseOver ? colorText : colorDark, penWidth});
-    painter.drawRect(rect());
-    painter.setPen(QPen{colorText, penWidth});
-    const qreal margin = 2.0 * penWidth;
+    const QColor& colorDark = palette.color(QPalette::ColorRole::Mid);
+    const qreal borderWidth = 2.0;
+    const QColor& borderColor = m_isMouseOver ? colorText : colorDark;
+    painter.setPen(QPen{borderColor, borderWidth});
+    painter.drawEllipse(QRectF{QPointF{borderWidth / 2.0, borderWidth / 2.0},
+                                 QSizeF{width() - borderWidth, height() - borderWidth}});
+    const qreal lineWidth = 3.0;
+    painter.setPen(QPen{colorText, lineWidth});
+    const qreal margin = 2.0 * lineWidth;
     // Paint horizontal line (minus sign: '-')
     painter.drawLine(
         QLineF{
@@ -56,17 +72,22 @@ paintEvent(QPaintEvent* event)  // override
 
 // protected
 bool
-TreeNodeExpanderWidget::
+TreeNodeExpander::
 event(QEvent* event)  // override
 {
     const QEvent::Type type = event->type();
     switch (type) {
-        case QEvent::Type::HoverEnter: {
-            m_isMouseOver = true;
-            break;
-        }
+        case QEvent::Type::Show:
+        case QEvent::Type::Hide:
+        // I never knew about ShowToParent or HideToParent before debugging weird show/hide issues!
+        case QEvent::Type::ShowToParent:
+        case QEvent::Type::HideToParent:
         case QEvent::Type::HoverLeave: {
             m_isMouseOver = false;
+            break;
+        }
+        case QEvent::Type::HoverEnter: {
+            m_isMouseOver = true;
             break;
         }
     }
@@ -75,13 +96,14 @@ event(QEvent* event)  // override
 }
 
 // protected
-void TreeNodeExpanderWidget::
+void
+TreeNodeExpander::
 mousePressEvent(QMouseEvent* event)  // override
 {
-    Base::mousePressEvent(event);
-    m_isExpanded = ! m_isExpanded;
-    update();
-    emit signalIsExpanded(m_isExpanded);
+    // Intentional: Do not run base method.  Why?  Do not propagate.
+//    Base::mousePressEvent(event);
+
+    slotSetExpanded( ! m_isExpanded);
 }
 
 }  // namespace SDV

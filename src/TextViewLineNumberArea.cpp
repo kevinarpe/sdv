@@ -127,7 +127,7 @@ TextViewLineNumberArea(TextView& textView,
         const qreal charWidth = Private::calcCharWidth(fontMetricsF);
         m_width = charWidth * (kDefaultLeftMarginCharWidthRatio + 1.0 + kDefaultRightMarginCharWidthRatio);
     }
-    QObject::connect(&textView, &TextView::signalVisibleLineIndicesChanged,
+    QObject::connect(&textView, &TextView::signalVisibleLinesChanged,
                      [this]() { Private::slotVisibleLineIndicesChanged(*this); });
 
     QObject::connect(&textView.textCursor(), &TextViewTextCursor::signalLineChange,
@@ -180,7 +180,7 @@ setPen(const QPen& pen)
 }
 
 // TODO: IMPL WIDGET SCROLL IF POSSIBLE -- LOOKS VERY DIFFICULT!
-// WHY?  TextView::signalVisibleLineIndicesChanged
+// Why?  TextView::signalVisibleLinesChanged
 // In theory, we would need "tighter" signalling that would scroll when possible, else do full repaint.
 
 // protected
@@ -215,7 +215,7 @@ paintEvent(QPaintEvent* event)  // override
     const TextViewGraphemePosition& pos = m_textView.textCursor().position();
     const std::vector<int>& visibleLineIndexVec = m_textView.docView().visibleLineIndexVec();
     const int firstVisibleLineIndex = m_textView.firstVisibleLineIndex();
-    std::vector<int>::const_iterator iter = m_textView.docView().find(firstVisibleLineIndex);
+    std::vector<int>::const_iterator iter = m_textView.docView().findOrAssert(firstVisibleLineIndex);
 
     for ( ; visibleLineIndexVec.end() != iter; ++iter)
     {
