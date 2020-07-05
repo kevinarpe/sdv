@@ -9,7 +9,7 @@ class QString;
 
 namespace SDV {
 
-class TextViewSelectionRange;
+class TextViewSelection;
 
 struct TextViewLineSelection
 {
@@ -30,7 +30,7 @@ struct TextViewLineSelection
     none(const QString& line);
 
     static TextViewLineSelection
-    create(const TextViewSelectionRange& selectionRange,
+    create(const TextViewSelection& selection,
            const int lineIndex,
            const QString& line);
 };

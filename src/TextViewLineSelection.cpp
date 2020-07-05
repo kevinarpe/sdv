@@ -2,10 +2,10 @@
 // Created by kca on 4/7/2020.
 //
 
-#include <cassert>
 #include "TextViewLineSelection.h"
+#include <cassert>
 #include <QString>
-#include "TextViewSelectionRange.h"
+#include "TextViewSelection.h"
 
 namespace SDV {
 
@@ -24,12 +24,11 @@ none(const QString& line)
 // public static
 TextViewLineSelection
 TextViewLineSelection::
-create(const TextViewSelectionRange& selectionRange,
+create(const TextViewSelection& selection,
        const int lineIndex,
        const QString& line)
 {
-    const TextViewSelection& selection = selectionRange.selection;
-    if (false == selection.isValid() || false == selectionRange.contains(lineIndex))
+    if (false == selection.containsLine(lineIndex))
     {
         const TextViewLineSelection& x = TextViewLineSelection::none(line);
         return x;

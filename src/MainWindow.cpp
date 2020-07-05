@@ -452,7 +452,7 @@ struct MainWindow::Private
     slotExit(MainWindow& self)
     {
         if (shallExit(self)) {
-            qApp->exit(EXIT_SUCCESS);
+            QCoreApplication::exit(EXIT_SUCCESS);
         }
     }
 

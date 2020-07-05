@@ -16,7 +16,7 @@
 namespace SDV {
 
 enum class StopEventPropagation { Yes, No };
-static const QString EMPTY_TEXT_LINE{};
+static const QString kEmptyTextLine{};
 
 struct TextViewTextCursor::Private
 {
@@ -48,6 +48,7 @@ struct TextViewTextCursor::Private
     slotVisibleLineIndicesChanged(TextViewTextCursor& self)
     {
         const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+
         if (pos.pos.lineIndex < self.m_textView.firstVisibleLineIndex()
             || pos.pos.lineIndex > self.m_textView.lastVisibleLineIndex())
         {
@@ -60,12 +61,12 @@ struct TextViewTextCursor::Private
     {
         const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
         const std::vector<QString>& textLineVec = self.m_docView->doc().lineVec();
-        const QString& line = textLineVec.empty() ? EMPTY_TEXT_LINE : textLineVec[pos.pos.lineIndex];
+        const QString& line = textLineVec.empty() ? kEmptyTextLine : textLineVec[pos.pos.lineIndex];
         return line;
     }
 
     static StopEventPropagation
-    keyPressEvent(TextViewTextCursor& self, QKeyEvent* event)
+    keyPressEvent(TextViewTextCursor& self, QKeyEvent* const event)
     {
         const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
         // Assume event will match.  If not, flip to No at very bottom.
@@ -95,56 +96,22 @@ struct TextViewTextCursor::Private
         // Qt::Key::Key_Control + Qt::Key::Key_Left
         else if (event->matches(QKeySequence::StandardKey::MoveToPreviousWord))
         {
-            // TODO
-            int dummy = 1;
+            move(self, &moveWordLeft);
         }
         // Qt::Key::Key_Shift + Qt::Key::Key_Control + Qt::Key::Key_Left
         else if (event->matches(QKeySequence::StandardKey::SelectPreviousWord))
         {
-            // TODO
-            int dummy = 1;
+            moveSelect(self, &moveWordLeft);
         }
         // Qt::Key::Key_Control + Qt::Key::Key_Right
         else if (event->matches(QKeySequence::StandardKey::MoveToNextWord))
         {
-            // Next/Prev word seems "broken" in IntelliJ.  Think more deeply about this first!
-            if (false)
-            {
-                const QRegularExpression rx{"\\b"};
-                verticalScrollToEnsureVisible(self);
-                const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
-                const std::vector<QString>& textLineVec = self.m_docView->doc().lineVec();
-                const auto iter0 = self.m_docView->findOrAssert(origPos.pos.lineIndex);
-                const std::vector<int>& visibleLineIndexVec = self.m_docView->visibleLineIndexVec();
-
-                for (auto iter = iter0 ; visibleLineIndexVec.end() != iter ; ++iter)
-                {
-                    const int lineIndex = *iter;
-                    const QString& line = textLineVec[lineIndex];
-                    const int charIndex = (iter0 == iter) ? origPos.pos.charIndex : 0;
-                    const QRegularExpressionMatch& match = rx.match(line, 1 + charIndex);
-                    if (match.hasMatch())
-                    {
-                        if (lineIndex != origPos.pos.lineIndex)
-                        {
-                            self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
-                        }
-                        const int charIndex = match.capturedStart();
-                        self.m_graphemeCursor->setCharIndex(charIndex);
-                        break;
-                    }
-                }
-                const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
-                if (false == origPos.pos.isEqual(pos.pos)) {
-//                    updateAfterMove(self, lineChanged);
-                }
-            }
+            move(self, &moveWordRight);
         }
         // Qt::Key::Key_Shift + Qt::Key::Key_Control + Qt::Key::Key_Right
         else if (event->matches(QKeySequence::StandardKey::SelectNextWord))
         {
-            // TODO
-            int dummy = 1;
+            moveSelect(self, &moveWordRight);
         }
         // Qt::Key::Key_Home
         else if (event->matches(QKeySequence::StandardKey::MoveToStartOfLine))
@@ -421,6 +388,50 @@ struct TextViewTextCursor::Private
             self.m_graphemeCursor->right();
             horizontalScrollToEnsureVisible(self);
             return true;
+        }
+        return false;
+    }
+
+    static bool
+    moveWordLeft(TextViewTextCursor& self)
+    {
+        return false;
+    }
+
+    // TODO: Can we do this *without* a regex?  Why?  moveWordLeft() will require reverse find on regex.  Tough!
+    static bool
+    moveWordRight(TextViewTextCursor& self)
+    {
+        const QRegularExpression rx{"\\b"};
+        verticalScrollToEnsureVisible(self);
+        horizontalScrollToEnsureVisible(self);
+        const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
+        const std::vector<QString>& textLineVec = self.m_docView->doc().lineVec();
+        const auto iter0 = self.m_docView->findOrAssert(origPos.pos.lineIndex);
+        const std::vector<int>& visibleLineIndexVec = self.m_docView->visibleLineIndexVec();
+
+        for (auto iter = iter0 ; visibleLineIndexVec.end() != iter ; ++iter)
+        {
+            const int lineIndex = *iter;
+            const QString& line = textLineVec[lineIndex];
+            const int charIndex = (iter0 == iter) ? origPos.pos.charIndex : 0;
+            const QRegularExpressionMatch& match = rx.match(line, 1 + charIndex);
+            if (match.hasMatch())
+            {
+                if (lineIndex != origPos.pos.lineIndex)
+                {
+                    self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
+                }
+                const int charIndex = match.capturedStart();
+                self.m_graphemeCursor->setCharIndex(charIndex);
+                const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
+                if (false == origPos.pos.isEqual(pos.pos))
+                {
+                    int dummy = 1;
+                }
+                updateAfterMove(self, origPos);
+                return true;
+            }
         }
         return false;
     }
@@ -826,7 +837,11 @@ struct TextViewTextCursor::Private
             // If text cursor position was not updated, then invalidate selection.
             if (isShift && self.m_selection.end.isValid() == false)
             {
-                self.m_selection.begin.invalidate();
+                // This is probably a bad idea!  I think selection.begin is always supposed to be valid.
+                // But not yet confident if this code can be removed.
+//                self.m_selection.begin.invalidate();
+//                qDebug() << "here";
+                int dummy = 1;
             }
             return StopEventPropagation::Yes;
         }
@@ -904,7 +919,7 @@ TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentVie
       m_docView{docView},
       // Intentional: Below, immediately call slotSetBlinking(true)
       m_isBlinking{false},
-      m_blinkMillis{qApp->cursorFlashTime()},
+      m_blinkMillis{QApplication::cursorFlashTime()},
       m_isVisible{true},
       m_graphemeCursor{std::make_unique<TextViewGraphemeCursor>(docView)},
       m_fontWidth{TextSegmentFontWidth{.beforeGrapheme = 0, .grapheme = 0}},

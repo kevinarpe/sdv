@@ -7,7 +7,8 @@
 #include <QPainter>
 #include <QDebug>
 #include <QPaintEvent>
-#include <QApplication>
+#include <QGuiApplication>
+#include <QClipboard>
 #include <QShortcut>
 #include <algorithm>
 #include <cmath>
@@ -19,8 +20,8 @@
 #include "PaintBackgroundFunctor.h"
 #include "PaintForegroundFunctor.h"
 #include "PaintContext.h"
-#include "TextViewSelectionRange.h"
 #include "TextViewLineSelection.h"
+#include "Constants.h"
 
 namespace SDV {
 
@@ -317,6 +318,81 @@ const
     return x;
 }
 
+static int
+staticSelectedTextCharCount(const TextViewPosition& begin,
+                            const TextViewPosition& end,
+                            const std::vector<QString>& lineVec,
+                            const TextViewDocumentView::const_iterator iter0)
+{
+    // Initialise with count of new-lines.  Note: Final line does not have a new-line.
+    int charCount = Constants::kNewLine.length() * (end.lineIndex - begin.lineIndex);
+
+    for (TextViewDocumentView::const_iterator iter = iter0
+        ; *iter <= end.lineIndex
+        ; ++iter)
+    {
+        const int lineIndex = *iter;
+        const QString& line = lineVec[lineIndex];
+        const int beginCharIndex = (begin.lineIndex == lineIndex) ? begin.charIndex : 0;
+        const int endCharIndex = (end.lineIndex == lineIndex) ? end.charIndex : line.length();
+        charCount += (endCharIndex - beginCharIndex);
+    }
+    return charCount;
+}
+
+// TODO: What about HTML or including size hints/comments/labels?
+// public
+QString
+TextView::
+selectedText()
+const
+{
+    const TextViewSelection& selection = m_textCursor->selection();
+    if (selection.isValid() == false) {
+        return QString{};
+    }
+    const TextViewPosition& begin = selection.begin.isLessThan(selection.end) ? selection.begin : selection.end;
+    const TextViewPosition& end = selection.begin.isLessThan(selection.end) ? selection.end : selection.begin;
+
+    const TextViewDocumentView::const_iterator iter0 = m_docView->findOrAssert(begin.lineIndex);
+    const std::vector<QString>& lineVec = m_docView->doc().lineVec();
+
+    QString x{};
+    const int charCount = staticSelectedTextCharCount(begin, end, lineVec, iter0);
+    x.reserve(charCount);
+
+    for (TextViewDocumentView::const_iterator iter = iter0
+        ; *iter <= end.lineIndex
+        ; ++iter)
+    {
+        const int lineIndex = *iter;
+        const QString& line = lineVec[lineIndex];
+        const int beginCharIndex = (begin.lineIndex == lineIndex) ? begin.charIndex : 0;
+        const int endCharIndex = (end.lineIndex == lineIndex) ? end.charIndex : line.length();
+        const QStringRef mid = line.midRef(beginCharIndex, endCharIndex - beginCharIndex);
+        x.append(mid);
+        if (lineIndex < end.lineIndex)
+        {
+            x.append(Constants::kNewLine);
+        }
+    }
+    return x;
+}
+
+// public slot
+void
+TextView::
+slotCopySelectedTextToClipboard(QClipboard::Mode mode /*= QClipboard::Mode::Clipboard*/)
+const
+{
+    const QString text = selectedText();
+    if (text.isEmpty()) {
+        return;
+    }
+    QClipboard* const clipboard = QGuiApplication::clipboard();
+    clipboard->setText(text, mode);
+}
+
 // protected
 void
 TextView::
@@ -359,7 +435,6 @@ paintEvent(QPaintEvent* event)  // override
             const qreal x = -1.0 * horizontalScrollBar()->value();
             assert(x <= 0);
             qreal y = 0;
-            const TextViewSelectionRange selectionRange = TextViewSelectionRange{m_textCursor->selection()};
             const std::vector<QString>& lineVec = m_docView->doc().lineVec();
             const TextViewGraphemePosition& textCursorPos = m_textCursor->position();
             const qreal viewportWidth = viewport()->width();
@@ -465,7 +540,7 @@ paintEvent(QPaintEvent* event)  // override
                     }
                 }
                 // Draw text selection (background)
-                const TextViewLineSelection lineSelection = TextViewLineSelection::create(selectionRange, lineIndex, line);
+                const TextViewLineSelection lineSelection = TextViewLineSelection::create(m_textCursor->selection(), lineIndex, line);
 
                 // If any selection exists on this line, only paint the background.
                 if (lineSelection.length > 0 || lineSelection.isEnd == false)
@@ -609,6 +684,20 @@ resizeEvent(QResizeEvent* event)  // override
         QScrollBar* const hbar = horizontalScrollBar();
         hbar->setMaximum(hbar->maximum() + widthDiff);
         hbar->setPageStep(hbar->pageStep() + widthDiff);
+    }
+}
+
+// protected
+void
+TextView::
+keyPressEvent(QKeyEvent* event)  // override
+{
+    if (event->matches(QKeySequence::StandardKey::Copy))
+    {
+        slotCopySelectedTextToClipboard();
+    }
+    else {
+        Base::keyPressEvent(event);
     }
 }
 

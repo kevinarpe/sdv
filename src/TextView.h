@@ -11,6 +11,7 @@
 #include <QAbstractScrollArea>
 #include <QPen>
 #include <QPainter>
+#include <QClipboard>
 #include "GraphemeFinder.h"
 #include "PaintBackgroundFunctor.h"
 #include "PaintForegroundFunctor.h"
@@ -183,6 +184,21 @@ public:
     positionForPoint(const QPointF& viewportPointF,
                      GraphemeFinder::IncludeTextCursor includeTextCursor)
     const;
+
+    /**
+     * @return copy of selected text with cross-platform new-line appended to each line except the last line
+     *         <br>may be empty
+     *
+     * @see #slotCopySelectedTextToClipboard()
+     */
+    QString selectedText() const;
+
+public slots:
+    /**
+     * Calls {@link #selectedText()}.  If not empty, then put text on clipboard.
+     */
+    void slotCopySelectedTextToClipboard(QClipboard::Mode mode = QClipboard::Mode::Clipboard) const;
+
 signals:
     /**
      * Emitted when any of these change:
@@ -193,6 +209,7 @@ signals:
 protected:
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     struct Private;

@@ -41,6 +41,8 @@ private:
 struct Constants
 {
     static const QString kStdinFileName;  // {QLatin1Char{'-'}}
+    static const bool kIsMicrosoftWindows;
+    static const QString kNewLine;  // {QLatin1Char{'\n'}} or {QLatin1String{"\r\n"}}
 
     struct Json
     {

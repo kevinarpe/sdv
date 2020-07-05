@@ -118,8 +118,6 @@ add_executable(sdv
         src/TextViewDecorator.cpp
         src/TextViewDecorator.h
         src/CountingIterator.h
-        src/TextViewSelectionRange.cpp
-        src/TextViewSelectionRange.h
         src/TextViewLineSelection.cpp
         src/TextViewLineSelection.h)
 

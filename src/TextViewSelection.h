@@ -26,6 +26,23 @@ struct TextViewSelection
         end.invalidate();
     }
 
+    bool containsLine(const int lineIndex) const
+    {
+        if (false == isValid()) {
+            return false;
+        }
+
+        if (begin.isLessThan(end))
+        {
+            const bool x = (lineIndex >= begin.lineIndex && lineIndex <= end.lineIndex);
+            return x;
+        }
+        else {
+            const bool x = (lineIndex >= end.lineIndex && lineIndex <= begin.lineIndex);
+            return x;
+        }
+    }
+
     bool isEqual(const TextViewSelection& rhs) const
     {
         const bool x = (begin.isEqual(rhs.begin) && end.isEqual(rhs.end));

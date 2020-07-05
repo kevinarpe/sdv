@@ -84,10 +84,21 @@ getAbsFilePath(const QString& filePath);
  * x Selected text should have range and count of lines & char count displayed in status bar
  * x After closing document, clear the status bar.
  */
+/*
+Raise bug ticket.  Cannot view TextViewTextCursor in GDB.  Why?
+
+Traceback (most recent call last):
+  File "/home/kca/saveme/clion/latest/bin/gdb/renderers/libstdcxx/v6/printers.py", line 1300, in __call__
+    return self.lookup[basename].invoke(val)
+  File "/home/kca/saveme/clion/latest/bin/gdb/renderers/libstdcxx/v6/printers.py", line 1237, in invoke
+    return self.function(self.name, value)
+  File "/home/kca/saveme/clion/latest/bin/gdb/renderers/default/libstdcxx_printers.py", line 128, in __init__
+    raise ValueError("Unsupported implementation for unique_ptr: %s" % impl_type)
+ValueError: Unsupported implementation for unique_ptr: std::__uniq_ptr_data<SDV::TextViewGraphemeCursor, std::default_delete<SDV::TextViewGraphemeCursor>, true, true>
+ */
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-//    app.setFont(QFont("Deja Vu Sans Mono", 14));
     QCommandLineParser parser;
     parser.setApplicationDescription(SDV::MainWindow::kWindowTitle);
     parser.addHelpOption();
