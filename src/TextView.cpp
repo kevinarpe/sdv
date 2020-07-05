@@ -367,10 +367,18 @@ const
     {
         const int lineIndex = *iter;
         const QString& line = lineVec[lineIndex];
-        const int beginCharIndex = (begin.lineIndex == lineIndex) ? begin.charIndex : 0;
-        const int endCharIndex = (end.lineIndex == lineIndex) ? end.charIndex : line.length();
-        const QStringRef mid = line.midRef(beginCharIndex, endCharIndex - beginCharIndex);
-        x.append(mid);
+
+        if (begin.lineIndex == lineIndex || end.lineIndex == lineIndex)
+        {
+            const int beginCharIndex = (begin.lineIndex == lineIndex) ? begin.charIndex : 0;
+            const int endCharIndex = (end.lineIndex == lineIndex) ? end.charIndex : line.length();
+            const QStringRef mid = line.midRef(beginCharIndex, endCharIndex - beginCharIndex);
+            x.append(mid);
+        }
+        else {
+            x.append(line);
+        }
+
         if (lineIndex < end.lineIndex)
         {
             x.append(Constants::kNewLine);

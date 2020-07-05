@@ -5,6 +5,7 @@
 #include "TextViewDecorator.h"
 #include <QLabel>
 #include <QScrollBar>
+#include <QDebug>
 #include "TextView.h"
 #include "JsonTree.h"
 #include "TreeNodeExpander.h"
@@ -13,12 +14,15 @@
 #include "TextViewPosition.h"
 #include "TextViewDocumentView.h"
 #include "TextViewDocument.h"
-#include <QDebug>
+#include "QKeyEvents.h"
+#include "TextViewTextCursor.h"
 
 namespace SDV {
 
 // public static
 const QColor TextViewDecorator::kTextColor{Qt::GlobalColor::darkGray};
+
+enum class StopEventPropagation { Yes, No };
 
 struct TextViewDecorator::Private
 {
@@ -61,7 +65,7 @@ struct TextViewDecorator::Private
                 }
                 const QString& line = lineVec[lineIndex];
                 const int indexOfExpanderPosition = Private::indexOfExpanderPosition(line);
-                JsonTreeNode& node = getFreeNode(self, lineSpacing, jsonNode);
+                const JsonTreeNode& node = getFreeNodeConstRef(self, lineSpacing, jsonNode, lineIndex);
                 const qreal y = self.m_textView.heightForVisibleLineIndex(lineIndex);
                 {
                     const qreal width = fontMetricsF.horizontalAdvance(line, indexOfExpanderPosition);
@@ -79,22 +83,27 @@ struct TextViewDecorator::Private
     static void
     hideAllUsedTreeNodes(TextViewDecorator& self)
     {
-        if (self.m_usedTreeNodeVec.empty()) {
+        if (self.m_lineIndex_To_JsonTreeNode_Map.empty()) {
             return;
         }
-        for (JsonTreeNode& node : self.m_usedTreeNodeVec)
+
+        self.m_freeTreeNodeVec.reserve(self.m_freeTreeNodeVec.size() + self.m_lineIndex_To_JsonTreeNode_Map.size());
+
+        for (auto iter = self.m_lineIndex_To_JsonTreeNode_Map.begin()
+            ; self.m_lineIndex_To_JsonTreeNode_Map.end() != iter
+            ; ++iter)
         {
+            JsonTreeNode& node = iter->second;
             node.jsonNode = nullptr;
             node.expander->setVisible(false);
             if (node.expanderConnection) {
                 QObject::disconnect(node.expanderConnection);
             }
             node.sizeLabel->setVisible(false);
-        }
-        self.m_freeTreeNodeVec.insert(
-            self.m_freeTreeNodeVec.end(), self.m_usedTreeNodeVec.begin(), self.m_usedTreeNodeVec.end());
 
-        self.m_usedTreeNodeVec.clear();
+            self.m_freeTreeNodeVec.push_back(node);
+        }
+        self.m_lineIndex_To_JsonTreeNode_Map.clear();
     }
 
     static bool
@@ -126,12 +135,14 @@ struct TextViewDecorator::Private
         return i - 2;
     }
 
-    static JsonTreeNode&
-    getFreeNode(TextViewDecorator& self, const qreal lineSpacing, JsonNode* const jsonNode)
+    // Intentional: "Loud" method name to match return type.
+    static const JsonTreeNode&
+    getFreeNodeConstRef(TextViewDecorator& self, const qreal lineSpacing, JsonNode* const jsonNode, const int lineIndex)
     {
-        JsonTreeNode& node = getFreeNode0(self, lineSpacing, jsonNode);
-        const bool isExpanded = Private::isExpanded(self, jsonNode);
+        JsonTreeNode& node = getFreeNodeRef(self, lineSpacing, jsonNode, lineIndex);
+
         // Intentional: Set expanded before signal-slot connect.
+        const bool isExpanded = Private::isExpanded(self, jsonNode);
         node.expander->slotSetExpanded(isExpanded);
 
         node.expanderConnection =
@@ -140,28 +151,40 @@ struct TextViewDecorator::Private
         return node;
     }
 
+    // Intentional: "Loud" method name to match return type.
     static JsonTreeNode&
-    getFreeNode0(TextViewDecorator& self, const qreal lineSpacing, JsonNode* const jsonNode)
+    getFreeNodeRef(TextViewDecorator& self, const qreal lineSpacing, JsonNode* const jsonNode, const int lineIndex)
+    {
+        JsonTreeNode nodeValue = getFreeNodeValue(self, lineSpacing, jsonNode);
+        const auto pair = Algorithm::Map::insertNewOrAssert(self.m_lineIndex_To_JsonTreeNode_Map, lineIndex, nodeValue);
+        auto iter = pair.first;
+        // Very important: We modify *value* 'expanderConnection' in the caller.  This *must* be a reference!
+        JsonTreeNode& nodeRef = iter->second;
+        return nodeRef;
+    }
+
+    // Intentional: "Loud" method name to match return type.
+    static JsonTreeNode
+    getFreeNodeValue(TextViewDecorator& self, const qreal lineSpacing, JsonNode* const jsonNode)
     {
         if (self.m_freeTreeNodeVec.empty())
         {
-            JsonTreeNode& x =
-                self.m_usedTreeNodeVec.emplace_back(
+            JsonTreeNode x =
                     JsonTreeNode{
                         .jsonNode = jsonNode,
                         .expander = newTreeNodeExpander(self, lineSpacing),
                         .sizeLabel = newQLabel(self, jsonNode)
-                    });
+                    };
             return x;
         }
         else {
-            JsonTreeNode& jsonTreeNode = self.m_usedTreeNodeVec.emplace_back(self.m_freeTreeNodeVec.back());
+            JsonTreeNode node = self.m_freeTreeNodeVec.back();
             self.m_freeTreeNodeVec.pop_back();
-            jsonTreeNode.jsonNode = jsonNode;
-            setQLabelText(self, jsonTreeNode.sizeLabel, jsonNode);
-            jsonTreeNode.expander->show();
-            jsonTreeNode.sizeLabel->show();
-            return jsonTreeNode;
+            node.jsonNode = jsonNode;
+            setQLabelText(self, node.sizeLabel, jsonNode);
+            node.expander->show();
+            node.sizeLabel->show();
+            return node;
         }
     }
 
@@ -311,6 +334,41 @@ struct TextViewDecorator::Private
         // which will trigger signalVisibleLinesChanged()... which will trigger Private::update()!  *Phew* :)
         self.m_textView.viewport()->update(viewportRect);
     }
+
+    static StopEventPropagation
+    keyPressEvent(const TextViewDecorator& self, QKeyEvent* const event)
+    {
+        // Assume event will match.  If not, flip to No at very bottom.
+        StopEventPropagation stopEventPropagation = StopEventPropagation::Yes;
+
+        // (1) This is probably from the numpad.
+        if (QKeyEvents::matches(event, (Qt::Modifier::CTRL | Qt::Key::Key_Plus))
+            // (2) Most keyboards require Shift+= to input '+'.
+            || QKeyEvents::matches(event, (Qt::Modifier::CTRL | Qt::Modifier::SHIFT | Qt::Key::Key_Plus)))
+        {
+            keyPressEvent_trySetExpanded(self, true);
+        }
+        else if (QKeyEvents::matches(event, (Qt::Modifier::CTRL | Qt::Key::Key_Minus)))
+        {
+            keyPressEvent_trySetExpanded(self, false);
+        }
+        else {
+            stopEventPropagation = StopEventPropagation::No;
+        }
+        return stopEventPropagation;
+    }
+
+    static void
+    keyPressEvent_trySetExpanded(const TextViewDecorator& self, const bool isExpanded)
+    {
+        const TextViewGraphemePosition& pos = self.m_textView.textCursor().position();
+        const auto iter = self.m_lineIndex_To_JsonTreeNode_Map.find(pos.pos.lineIndex);
+        if (self.m_lineIndex_To_JsonTreeNode_Map.end() != iter)
+        {
+            const JsonTreeNode& node = iter->second;
+            node.expander->slotSetExpanded(isExpanded);
+        }
+    }
 };
 
 // public
@@ -324,6 +382,8 @@ TextViewDecorator(TextView& parent)
                      });
     QObject::connect(&parent, &TextView::signalVisibleLinesChanged,
                      [this]() { Private::update(*this); });
+
+    m_textView.installEventFilter(this);
 }
 
 // public
@@ -346,6 +406,33 @@ setTextColor(const QColor& color)
         m_textColor = color;
         Private::update(*this);
     }
+}
+
+/**
+ * @return true to stop event propagation
+ */
+// public
+bool
+TextViewDecorator::
+eventFilter(QObject* const watched, QEvent* const event)  // override
+{
+    // Intentional: Base impl always returns false.
+//    return QObject::eventFilter(watched, event);
+
+    const QEvent::Type type = event->type();
+    switch (type)
+    {
+        case QEvent::Type::KeyPress: {
+            const StopEventPropagation x = Private::keyPressEvent(*this, static_cast<QKeyEvent*>(event));
+            return (StopEventPropagation::Yes == x);
+        }
+        default: {
+            // @DebugBreakpoint
+            int dummy = 1;
+        }
+    }
+    // Intentional: Never block processing by intended target.
+    return false;
 }
 
 }  // namespace SDV

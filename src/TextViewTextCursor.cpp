@@ -12,6 +12,7 @@
 #include "TextViewDocument.h"
 #include "TextViewDocumentView.h"
 #include "TextViewGraphemeCursor.h"
+#include "QKeyEvents.h"
 
 namespace SDV {
 
@@ -203,31 +204,27 @@ struct TextViewTextCursor::Private
         {
             deselect(self);
         }
-        else {
-            // See: bool QKeyEvent::matches(QKeySequence::StandardKey matchKey) const
-            // "The keypad and group switch modifier should not make a difference"
-            const uint searchkey = (event->modifiers() | event->key()) & ~(Qt::KeypadModifier | Qt::GroupSwitchModifier);
-            if (searchkey == (Qt::Modifier::CTRL | Qt::Key::Key_PageUp))
-            {
-                move(self, &moveViewTop);
-            }
-            else if (searchkey == (Qt::Modifier::SHIFT | Qt::Modifier::CTRL | Qt::Key::Key_PageUp))
-            {
-                moveSelect(self, &moveViewTop);
-            }
-            else if (searchkey == (Qt::Modifier::CTRL | Qt::Key::Key_PageDown))
-            {
-                move(self, &moveViewBottom);
-            }
-            else if (searchkey == (Qt::Modifier::SHIFT | Qt::Modifier::CTRL | Qt::Key::Key_PageDown))
-            {
-                moveSelect(self, &moveViewBottom);
-            }
-            // THIS IS TOUGH TO IMPL! :P
-            else if (searchkey == (Qt::Modifier::ALT | Qt::Key::Key_PageUp))
-            {
-                // TODO
-                int dummy = 1;
+        else if (QKeyEvents::matches(event, (Qt::Modifier::CTRL | Qt::Key::Key_PageUp)))
+        {
+            move(self, &moveViewTop);
+        }
+        else if (QKeyEvents::matches(event, (Qt::Modifier::SHIFT | Qt::Modifier::CTRL | Qt::Key::Key_PageUp)))
+        {
+            moveSelect(self, &moveViewTop);
+        }
+        else if (QKeyEvents::matches(event, (Qt::Modifier::CTRL | Qt::Key::Key_PageDown)))
+        {
+            move(self, &moveViewBottom);
+        }
+        else if (QKeyEvents::matches(event, (Qt::Modifier::SHIFT | Qt::Modifier::CTRL | Qt::Key::Key_PageDown)))
+        {
+            moveSelect(self, &moveViewBottom);
+        }
+        // THIS IS TOUGH TO IMPL! :P
+        else if (QKeyEvents::matches(event, (Qt::Modifier::ALT | Qt::Key::Key_PageUp)))
+        {
+            // TODO
+            int dummy = 1;
 //                verticalScrollToEnsureVisible(self);
 //                QScrollBar* const hbar = self.m_textView.horizontalScrollBar();
 //                if (hbar->value() > hbar->minimum())
@@ -237,11 +234,11 @@ struct TextViewTextCursor::Private
 //                    updateAfterMove(self);
 //                }
 //                clearSelection(self);
-            }
-            else if (searchkey == (Qt::Modifier::ALT | Qt::Key::Key_PageDown))
-            {
-                // TODO
-                int dummy = 1;
+        }
+        else if (QKeyEvents::matches(event, (Qt::Modifier::ALT | Qt::Key::Key_PageDown)))
+        {
+            // TODO
+            int dummy = 1;
 //                verticalScrollToEnsureVisible(self);
 //                QScrollBar* const hbar = self.m_textView.horizontalScrollBar();
 //                if (hbar->value() < hbar->maximum())
@@ -251,11 +248,9 @@ struct TextViewTextCursor::Private
 //                    updateAfterMove(self);
 //                }
 //                clearSelection(self);
-            }
-            else
-            {
-                stopEventPropagation = StopEventPropagation::No;
-            }
+        }
+        else {
+            stopEventPropagation = StopEventPropagation::No;
         }
         return stopEventPropagation;
     }
@@ -982,7 +977,7 @@ afterPaintEvent()
 // public
 bool
 TextViewTextCursor::
-eventFilter(QObject* watched, QEvent* event)  // override
+eventFilter(QObject* const watched, QEvent* const event)  // override
 {
     // Intentional: Base impl always returns false.
 //    return QObject::eventFilter(watched, event);

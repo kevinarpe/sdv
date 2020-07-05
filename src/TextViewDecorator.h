@@ -38,6 +38,8 @@ public:
      */
     void setTextColor(const QColor& color);
 
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 private:
     struct Private;
     TextView& m_textView;
@@ -51,7 +53,7 @@ private:
         QLabel* sizeLabel;
     };
     std::vector<JsonTreeNode> m_freeTreeNodeVec;
-    std::vector<JsonTreeNode> m_usedTreeNodeVec;
+    std::unordered_map<int, JsonTreeNode> m_lineIndex_To_JsonTreeNode_Map;
     std::unordered_map<JsonNode*, bool> m_jsonNode_To_IsExpanded_Map;
 };
 

@@ -119,6 +119,8 @@ add_executable(sdv
         src/TextViewDecorator.h
         src/CountingIterator.h
         src/TextViewLineSelection.cpp
-        src/TextViewLineSelection.h)
+        src/TextViewLineSelection.h
+        src/QKeyEvents.cpp
+        src/QKeyEvents.h)
 
 target_link_libraries(sdv Qt5::Widgets)
