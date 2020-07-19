@@ -25,10 +25,10 @@ public:
 
     const std::vector<int>& visibleLineIndexVec() const { return m_visibleLineIndexVec; }
 
-    void showLine(const int lineIndex);
-    void hideLine(const int lineIndex);
-    void showLineRange(const int firstLineIndex, const int lastLineIndexInclusive);
-    void hideLineRange(const int firstLineIndex, const int lastLineIndexInclusive);
+    void showLine(int lineIndex);
+    void hideLine(int lineIndex);
+    void showLineRange(int firstLineIndex, int lastLineIndexInclusive);
+    void hideLineRange(int firstLineIndex, int lastLineIndexInclusive);
 
     int firstVisibleLineIndex() const;
     int lastVisibleLineIndex() const;
@@ -42,8 +42,6 @@ public:
      */
     int findNormalisedLineIndex(int lineIndex) const;
 
-    /** May return visibleLineIndexVec().end() */
-    const_iterator tryFind(int lineIndex) const;
     /** assert(false) if not found */
     const_iterator findOrAssert(int lineIndex) const;
 

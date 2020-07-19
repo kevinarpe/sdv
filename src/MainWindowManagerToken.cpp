@@ -11,7 +11,8 @@ namespace SDV {
 MainWindowManagerToken::
 ~MainWindowManagerToken()
 {
-    mainWindowManager.remove_(mainWindow);
+    // TODO: Sometimes crashes b/c 'mainWindowManager' has a shorter lifetime than this instance!
+    mainWindowManager.remove(mainWindow);
 }
 
 }  // namespace SDV

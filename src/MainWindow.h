@@ -5,11 +5,13 @@
 #ifndef SDV_MAINWINDOW_H
 #define SDV_MAINWINDOW_H
 
+#include <unordered_map>
 #include <QMainWindow>
 #include "MainWindowManagerToken.h"
 #include "Constants.h"
 #include "TextFormat.h"
-class QTreeView;
+#include "MainWindowInput.h"
+class QThread;
 
 namespace SDV {
 
@@ -20,6 +22,8 @@ class TextWidget;
 class TextView;
 class TextViewLineNumberArea;
 class TextViewDecorator;
+class MainWindowThreadWorker;
+class TextViewTextStatsService;
 
 class MainWindow : public QMainWindow
 {
@@ -31,15 +35,16 @@ public:
     using Base = QMainWindow;
     MainWindow(MainWindowManager& mainWindowManager,
                const std::unordered_map<JsonNodeType, TextFormat>& formatMap,
-               QString absFilePath = QString(),
+               MainWindowThreadWorker* threadWorker,
+               const MainWindowInput& input,
                QWidget* parent = nullptr,
                Qt::WindowFlags flags = Qt::WindowFlags());
+    ~MainWindow() override;
 
-    void setGeometry(MainWindow* other = nullptr);
-    const QString& absFilePath() const { return m_absFilePath; }
-    void addFileOpenRecent(int number, const QString& absFilePath);
-    void addOpenFile(const QString& absFilePath);
-    void removeOpenFile(const QString& absFilePath);
+    void adjustGeometry(MainWindow* other = nullptr);
+    void addRecentFileOpen(int number, const MainWindowInput& input);
+    void addOpenInput(const MainWindowInput& input);
+    void removeOpenInput(const MainWindowInput& input);
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -48,25 +53,36 @@ protected:
 
 private:
     struct Private;
-    static const QString kClipboardAbsFilePath;  // = "<clipboard>";
-    static const QString kStdinAbsFilePath;  // = "<stdin>";
     const std::unordered_map<JsonNodeType, TextFormat>& m_formatMap;
-    // Ex: "" or "/home/kca/saveme/qt5/structured-data-viewer/cmake-build-debug/CMakeCache.txt"
-    QString m_absFilePath;
+    MainWindowInput m_input;
     StatusBar* m_statusBar;
     /** Ex: "7,245 lines, 13,845 Unicode chars, 14,252 UTF-8 bytes" */
     QString m_statusBarTextViewLabelBaseText;
-//    TabWidget* m_tabWidget;
-    TextWidget* m_textWidget;
     TextView* m_textView;
     TextViewLineNumberArea* m_textViewLineNumberArea;
     TextViewDecorator* m_textViewDecorator;
-    // RAII guarantees when '*this' is destroyed, mainWindowManagerToken will also be destroyed.
-    MainWindowManagerToken m_mainWindowManagerToken;
+    std::unique_ptr<MainWindowManagerToken> m_mainWindowManagerToken;
     QAction* m_fileCloseAction;
     QMenu* m_fileOpenRecentMenu;
     QMenu* m_windowMenu;
     bool m_isClosing;
+    MainWindowThreadWorker* m_threadWorker;
+    std::unordered_map<QAction*, MainWindowInput> m_windowMenuAction_To_Input_Map;
+    std::vector<QMetaObject::Connection> m_qObjectConnectionVec;
+
+    struct
+    {
+        std::shared_ptr<TextViewTextStatsService> service;
+        int serviceId;
+        struct
+        {
+            std::vector<int> slotOpenInputStreamVec;
+            std::vector<int> slotOpenClipboardTextVec;
+            std::vector<int> slotCalcTextSelectionStatsVec;
+
+        } requestIds;
+
+    } m_textStats;
 };
 
 }  // namespace SDV

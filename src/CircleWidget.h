@@ -20,6 +20,7 @@ public:
     explicit CircleWidget(QWidget* parent = nullptr, Qt::WindowFlags f = Qt::WindowFlags())
         : Base{parent, f}
     {}
+    ~CircleWidget() override = default;
 //
 //    QPaintEngine* paintEngine() const override
 //    {

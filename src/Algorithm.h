@@ -96,14 +96,83 @@ struct Algorithm
          */
         template<typename _Vector, typename _Value>
         static _Value
-        valueOrDefault(const _Vector& vec, typename _Vector::size_type pos, _Value __defaultValue = _Value{})
+        valueOrDefault(const _Vector& __vec, typename _Vector::size_type __pos, _Value __defaultValue = _Value{})
         {
-            if (pos < vec.size()) {
-                const _Value& x = vec[pos];
+            if (__pos < __vec.size()) {
+                const _Value& x = __vec[__pos];
                 return x;
             }
             else {
                 return __defaultValue;
+            }
+        }
+
+        template<typename _Vector, typename _Value>
+        static typename _Vector::iterator
+        findOrAssert(_Vector& __vec, const _Value& __value)
+        {
+            typename _Vector::iterator it = std::find(__vec.begin(), __vec.end(), __value);
+            assert(__vec.end() != it);
+            return it;
+        }
+
+        template<typename _Vector, typename _Value>
+        static typename _Vector::const_iterator
+        findOrAssert(const _Vector& __vec, const _Value& __value)
+        {
+            typename _Vector::const_iterator it = std::find(__vec.begin(), __vec.end(), __value);
+            assert(__vec.end() != it);
+            return it;
+        }
+
+        template<typename _Vector, typename _Value>
+        static bool
+        exists(const _Vector& __vec, const _Value& __value)
+        {
+            typename _Vector::const_iterator it = std::find(__vec.begin(), __vec.end(), __value);
+            const bool x = (__vec.end() != it);
+            return x;
+        }
+
+        template<typename _Vector, typename _Value>
+        static bool
+        tryPushBackUnique(_Vector& __vec, const _Value& __value)
+        {
+            if (exists(__vec, __value))
+            {
+                return false;
+            }
+            __vec.push_back(__value);
+            return true;
+        }
+
+        template<typename _Vector, typename _Value>
+        static void
+        pushBackUniqueOrAssert(_Vector& __vec, const _Value& __value)
+        {
+            assert(tryPushBackUnique(__vec, __value));
+        }
+
+        template<typename _Vector, typename _Value>
+        static void
+        eraseFirstOrAssert(_Vector& __vec, const _Value& __value)
+        {
+            typename _Vector::iterator it = std::find(__vec.begin(), __vec.end(), __value);
+            assert(__vec.end() != it);
+            __vec.erase(it);
+        }
+
+        template<typename _Vector, typename _Value>
+        static bool
+        tryErase(_Vector& __vec, const _Value& __value)
+        {
+            typename _Vector::iterator it = std::find(__vec.begin(), __vec.end(), __value);
+            if (__vec.end() == it) {
+                return false;
+            }
+            else {
+                __vec.erase(it);
+                return true;
             }
         }
     };
@@ -127,6 +196,22 @@ struct Algorithm
             assert(r.second);
             return r;
         }
+
+        template<typename _Set, typename _Value>
+        static bool
+        tryErase(_Set& __set, const _Value& __value)
+        {
+            const std::size_t count = __set.erase(__value);
+            const bool x = (count > 1);
+            return x;
+        }
+
+        template<typename _Set, typename _Value>
+        static void
+        eraseOrAsset(_Set& __set, const _Value& __value)
+        {
+            assert(tryErase(__set, __value));
+        }
     };
 
     struct Map
@@ -149,7 +234,7 @@ struct Algorithm
         static _Value
         getOrDefault(const _Map& __map, const _Key& __key,
                      // Intentional: This *must* be passed by value.  Pass by reference is dangerous if caller used a temporary value.
-                     // I watched a Facebook talk about C++ on Youtube a long time ago...
+                     // I watched a Facebook talk about C++ on YouTube a long time ago...
                      _Value __defaultValue)
         {
             typename _Map::const_iterator __iter = __map.find(__key);
@@ -182,6 +267,30 @@ struct Algorithm
             return __x;
         }
 
+        template<typename _Map, typename _Value>
+        static typename _Map::const_iterator
+        findByValueOrAssert(const _Map& __constRefMap, const _Value& __value)
+        {
+            typename _Map::const_iterator __iter =
+                std::find_if(__constRefMap.begin(), __constRefMap.end(),
+                             [&__value](const auto& __pair){ return (__pair.second == __value); });
+
+            assert(__constRefMap.end() != __iter);
+            return __iter;
+        }
+
+        template<typename _Map, typename _Value>
+        static typename _Map::const_iterator
+        findByValueOrAssert(_Map& __refMap, const _Value& __value)
+        {
+            typename _Map::const_iterator __iter =
+                std::find_if(__refMap.begin(), __refMap.end(),
+                             [&__value](const auto& __pair){ return (__pair.second == __value); });
+
+            assert(__refMap.end() != __iter);
+            return __iter;
+        }
+
         // Ref: https://en.cppreference.com/w/cpp/container/unordered_map/insert_or_assign
         template<typename _Map, typename _Key, typename _Value>
         static std::pair<typename _Map::iterator, bool>
@@ -190,6 +299,23 @@ struct Algorithm
             std::pair<typename _Map::iterator, bool> r = map.insert_or_assign(__key, __value);
             assert(r.second);
             return r;
+        }
+
+        template<typename _Map, typename _Key>
+        static void
+        eraseByKeyOrAssert(_Map& map, const _Key& __key)
+        {
+            typename _Map::size_type eraseCount = map.erase(__key);
+            assert(1 == eraseCount);
+        }
+
+        template<typename _Map, typename _Key>
+        static bool
+        tryEraseByKey(_Map& map, const _Key& __key)
+        {
+            typename _Map::size_type eraseCount = map.erase(__key);
+            const bool x = (eraseCount > 0);
+            return x;
         }
     };
 };

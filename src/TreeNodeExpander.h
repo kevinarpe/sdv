@@ -15,8 +15,10 @@ class TreeNodeExpander : public QWidget
 
 public:
     using Base = QWidget;
+
     explicit TreeNodeExpander(QWidget* parent = nullptr, Qt::WindowFlags f = Qt::WindowFlags());
     ~TreeNodeExpander() override = default;
+
     bool isExpanded() const { return m_isExpanded; }
 
 public slots:

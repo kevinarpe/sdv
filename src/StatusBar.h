@@ -16,6 +16,7 @@ class StatusBar : public QStatusBar
 
 public:
     using Base = QStatusBar;
+
     explicit StatusBar(QWidget* parent = nullptr);
     ~StatusBar() override = default;
 

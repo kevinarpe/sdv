@@ -15,6 +15,7 @@ class TabWidget : public QTabWidget
 
 public:
     using Base = QTabWidget;
+
     explicit TabWidget(QWidget* parent = nullptr);
     ~TabWidget() override = default;
 

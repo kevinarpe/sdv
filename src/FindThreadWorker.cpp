@@ -9,10 +9,14 @@
 
 namespace SDV {
 
+// Ref: https://stackoverflow.com/a/26364094/257299
+// Ref: https://stackoverflow.com/a/26777364/257299
+//static const int z = qRegisterMetaType<FindThreadWorker::Result>("FindThreadWorker::Result");
+// Ref: https://stackoverflow.com/a/22056222/257299
+static const int z = qRegisterMetaType<FindThreadWorker::Result>("Result");
+
 struct FindThreadWorker::Private
 {
-    static const int m_static_qRegisterMetaType;
-
     static std::vector<int>
     createLineOffsetVec(const QString& plainText) {
         const QChar newline{(char) '\n'};
@@ -110,17 +114,11 @@ struct FindThreadWorker::Private
     }
 };
 
-// Ref: https://stackoverflow.com/a/26364094/257299
-// Ref: https://stackoverflow.com/a/26777364/257299
-// private static
-const int
-FindThreadWorker::Private::
-m_static_qRegisterMetaType = qRegisterMetaType<FindThreadWorker::Result>("Result");
-
 // public explicit
 FindThreadWorker::
 FindThreadWorker(const QString& plainText)
-    : Base{},
+    // Intentional: Thread workers begin with no parent.  This object will be re-parented when QObject::moveToThread(QThread*) is called.
+    : Base{nullptr},
       m_atomicHasWaitingSignal{false},
       m_plainText{plainText},
       m_lineOffsetVec{Private::createLineOffsetVec(plainText)}

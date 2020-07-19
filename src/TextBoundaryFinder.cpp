@@ -6,6 +6,31 @@
 
 namespace SDV {
 
+struct TextBoundaryFinder::Private
+{
+    static int
+    countRange(TextBoundaryFinder& self, const int offset, const int length)
+    {
+        if (0 == length) {
+            return 0;
+        }
+        self.m_finder.setPosition(offset);
+        assert(self.m_finder.isAtBoundary());
+        int count = 0;
+        while (true)
+        {
+            ++count;
+            const int pos = self.m_finder.toNextBoundary();
+            // This is bad.  We want to assert(false) if this happens.
+            assert(-1 != pos);
+            if (pos >= (offset + length)) {
+                break;
+            }
+        }
+        return count;
+    }
+};
+
 void
 TextBoundaryFinder::
 reset(QTextBoundaryFinder::BoundaryType boundaryType, const QString& text)
@@ -38,6 +63,23 @@ toPreviousBoundary()
         return -1;
     }
     const int x = m_finder.toPreviousBoundary();
+    return x;
+}
+
+int
+TextBoundaryFinder::
+countAll()
+{
+    const int x = Private::countRange(*this, 0, m_text.length());
+    return x;
+}
+
+int
+TextBoundaryFinder::
+countRange(const int offset, const int length)
+{
+    assert(offset >= 0 && (offset + length) <= m_text.length());
+    const int x = Private::countRange(*this, offset, length);
     return x;
 }
 

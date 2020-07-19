@@ -3,75 +3,79 @@
 //
 
 #include "MainWindowManager.h"
+#include <cassert>
 #include "MainWindowManagerToken.h"
 #include "MainWindow.h"
-#include <cassert>
+#include "Algorithm.h"
 
 namespace SDV {
 
 // public
-MainWindowManagerToken
+std::unique_ptr<MainWindowManagerToken>
 MainWindowManager::
 add(MainWindow& mainWindow)
 {
-    std::pair<std::unordered_set<MainWindow*>::iterator, bool> result = m_mainWindowSet.insert(&mainWindow);
-    assert(result.second);
-    return MainWindowManagerToken{*this, mainWindow};
+    Algorithm::Set::insertNewOrAssert(m_mainWindowSet, &mainWindow);
+    std::unique_ptr<MainWindowManagerToken> x = std::make_unique<MainWindowManagerToken>(*this, mainWindow);
+    return x;
+}
+
+// public
+bool
+MainWindowManager::
+tryAddRecentFileOpen(const MainWindowInput& input)
+{
+    if (false == input.isFile()) {
+        return false;
+    }
+    // Scenario: Open file, close file, re-open same file: Do not re-add a recent file list
+    if (Algorithm::Vector::exists(m_fileOpenRecentVec, input)) {
+        return false;
+    }
+    // TODO: Is there a max:  Or can we remove index zero if too large... then append?
+    // TODO: Can we save to a config file and reload?
+    Algorithm::Vector::pushBackUniqueOrAssert(m_fileOpenRecentVec, input);
+
+    for (MainWindow* const mw : m_mainWindowSet)
+    {
+        mw->addRecentFileOpen(m_fileOpenRecentVec.size(), input);
+    }
+    return true;
 }
 
 // public
 void
 MainWindowManager::
-tryAddFileOpenRecent(const QString& absFilePath)
+afterOpenInput(const MainWindowInput& input)
 {
-    if (m_fileOpenRecentAbsFilePathVec.end() !=
-            std::find(m_fileOpenRecentAbsFilePathVec.begin(), m_fileOpenRecentAbsFilePathVec.end(), absFilePath)) {
-        return;
-    }
-    m_fileOpenRecentAbsFilePathVec.push_back(absFilePath);
+    Algorithm::Vector::pushBackUniqueOrAssert(m_openInputVec, input);
 
-    for (MainWindow* mw : m_mainWindowSet) {
-        mw->addFileOpenRecent(m_fileOpenRecentAbsFilePathVec.size(), absFilePath);
+    for (MainWindow* const mw : m_mainWindowSet)
+    {
+        mw->addOpenInput(input);
     }
 }
 
 // public
 void
 MainWindowManager::
-afterFileOpen(const QString& absFilePath)
+afterCloseInput(const MainWindowInput& input)
 {
-    assert( ! absFilePath.isEmpty());
-    assert(m_openAbsFilePathVec.end() == std::find(m_openAbsFilePathVec.begin(), m_openAbsFilePathVec.end(), absFilePath));
-    m_openAbsFilePathVec.push_back(absFilePath);
+    Algorithm::Vector::eraseFirstOrAssert(m_openInputVec, input);
 
-    for (MainWindow* mw : m_mainWindowSet) {
-        mw->addOpenFile(absFilePath);
+    for (MainWindow* const mw : m_mainWindowSet)
+    {
+        mw->removeOpenInput(input);
     }
 }
 
-// public
-void
-MainWindowManager::
-afterFileClose(const QString& absFilePath)
-{
-    assert( ! absFilePath.isEmpty());
-    const std::vector<QString>::iterator& iter =
-        std::find(m_openAbsFilePathVec.begin(), m_openAbsFilePathVec.end(), absFilePath);
-
-    assert(m_openAbsFilePathVec.end() != iter);
-    m_openAbsFilePathVec.erase(iter);
-
-    for (MainWindow* mw : m_mainWindowSet) {
-        mw->removeOpenFile(absFilePath);
-    }
-}
-
+// TODO: Can we combine with afterFileClose()?
 // private
 void
 MainWindowManager::
-remove_(MainWindow& mainWindow)
+remove(MainWindow& mainWindow)
 {
-    assert(m_mainWindowSet.erase(&mainWindow));
+    Algorithm::Set::eraseOrAsset(m_mainWindowSet, &mainWindow);
 }
 
 }  // namespace SDV

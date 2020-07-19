@@ -8,10 +8,10 @@
 namespace SDV {
 
 // public static
-const IsRichText IsRichText::YES{true};
+const IsRichText IsRichText::kYes{true};
 
 // public static
-const IsRichText IsRichText::NO{false};
+const IsRichText IsRichText::kNo{false};
 
 // public static
 const QString Constants::kStdinFileName{QLatin1Char{'-'}};

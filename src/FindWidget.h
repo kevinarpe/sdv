@@ -20,8 +20,10 @@ class FindWidget : public SmoothShowHideWidget
 
 public:
     using Base = SmoothShowHideWidget;
+
     explicit FindWidget(QWidget* parent = nullptr);
     ~FindWidget() override = default;
+
     FindLineEdit* findLineEdit() const { return m_findLineEdit; }
     QLabel* matchCountLabel() const { return m_matchCountLabel; }
 

@@ -38,11 +38,14 @@ public:
     static const QPen kDefaultTextCursorTextPen;  // {QColor{Qt::GlobalColor::white}};
 
     using Base = QAbstractScrollArea;
+
     explicit TextView(QWidget* parent = nullptr);
     ~TextView() override; // = default
 
     void setDoc(const std::shared_ptr<TextViewDocument>& doc);
+    void afterDocUpdate();
 
+    const std::shared_ptr<TextViewDocumentView>& docViewPtr() const { return m_docView; }
     TextViewDocumentView& docView() { return *m_docView; }
     const TextViewDocumentView& docView() const { return *m_docView; }
 
@@ -138,14 +141,10 @@ public:
 
     // TODO: Also measure visibleLineCount()?
 
-    // @Nullable
-    PaintContext* paintBackgroundContext() const { return m_paintBackgroundContext.get(); }
-
+    const std::shared_ptr<PaintContext>& paintBackgroundContext() const { return m_paintBackgroundContext; }
     void setPaintBackgroundContext(const std::shared_ptr<PaintContext>& context) { m_paintBackgroundContext = context; }
 
-    // @Nullable
-    PaintContext* paintForegroundContext() const { return m_paintForegroundContext.get(); }
-
+    const std::shared_ptr<PaintContext>& paintForegroundContext() const { return m_paintForegroundContext; }
     void setPaintForegroundContext(const std::shared_ptr<PaintContext>& context) { m_paintForegroundContext = context; }
 
     using BackgroundFormatSet = std::set<LineFormatBackground, LineSegment::NonOverlapCompare<LineFormatBackground>>;
@@ -205,6 +204,7 @@ signals:
      * <br>{@link #firstVisibleLineIndex()}, {@link lastVisibleLineIndex()}, {@link lastFullyVisibleLineIndex()}
      */
     void signalVisibleLinesChanged();
+    void signalSelectedTextChanged();
 
 protected:
     void paintEvent(QPaintEvent* event) override;

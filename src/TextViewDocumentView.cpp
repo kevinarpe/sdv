@@ -45,8 +45,10 @@ struct TextViewDocumentView::Private
 // public
 TextViewDocumentView::
 TextViewDocumentView()
-    : m_doc{TextViewDocument::staticEmpty()}
-{}
+{
+    const std::shared_ptr<TextViewDocument>& doc = TextViewDocument::staticEmpty();
+    setDoc(doc);
+}
 
 // public
 const TextViewDocument&
@@ -221,21 +223,10 @@ const
 // public
 TextViewDocumentView::const_iterator
 TextViewDocumentView::
-tryFind(const int lineIndex)
-const
-{
-    const auto iter = Private::findOrAssert(*this, lineIndex);
-    return iter;
-}
-
-// public
-TextViewDocumentView::const_iterator
-TextViewDocumentView::
 findOrAssert(const int lineIndex)
 const
 {
-    const auto iter = tryFind(lineIndex);
-    assert(m_visibleLineIndexVec.end() != iter);
+    const auto iter = Private::findOrAssert(*this, lineIndex);
     return iter;
 }
 

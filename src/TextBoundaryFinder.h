@@ -33,8 +33,11 @@ public:
     void toEnd() { m_finder.toEnd(); }
     int toNextBoundary();
     int toPreviousBoundary();
+    int countAll();
+    int countRange(int offset, int length);
 
 private:
+    struct Private;
     // Ref: https://stackoverflow.com/a/3483026/257299
     std::vector<unsigned char> m_buffer;
     // Intentional: It is unsafe to call QString::data() without storing a copy.

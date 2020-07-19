@@ -291,11 +291,16 @@ struct TextViewTextCursor::Private
         }
     }
 
-    /* Ex: &moveLeft */
-    using MoveFunc = bool (*)(TextViewTextCursor& self);
+    /*
+     * Ex: &moveLeft
+     *
+     * @return if text cursor was moved, return {@code true}
+     *         <br>Obvious example where text cursor does not move: If text cursor is at (0, 0), move left will return {@code false}.
+     */
+    using TryMoveFunc = bool (*)(TextViewTextCursor& self);
 
     static void
-    move(TextViewTextCursor& self, MoveFunc moveFunc)
+    move(TextViewTextCursor& self, TryMoveFunc moveFunc)
     {
         // Intentional: Copy not reference.  Why?  moveFunc may change position.
         const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
@@ -313,14 +318,16 @@ struct TextViewTextCursor::Private
         {
             self.m_selection.invalidate();
             update(self);
+            emit self.m_textView.signalSelectedTextChanged();
         }
     }
 
     static void
-    moveSelect(TextViewTextCursor& self, MoveFunc moveFunc)
+    moveSelect(TextViewTextCursor& self, TryMoveFunc moveFunc)
     {
         // Intentional: Copy not reference.  Why?  moveFunc may change position.
         const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
+        const TextViewSelection origSelection = self.m_selection;
         if (moveFunc(self))
         {
             const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
@@ -337,6 +344,10 @@ struct TextViewTextCursor::Private
             }
             self.m_selection.end = pos.pos;
             updateAfterMove(self, origPos);
+            if (false == self.m_selection.isEqual(origSelection))
+            {
+                emit self.m_textView.signalSelectedTextChanged();
+            }
         }
     }
 
@@ -942,7 +953,7 @@ TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentVie
 // Ref: https://stackoverflow.com/a/6089065/257299
 // public
 TextViewTextCursor::
-~TextViewTextCursor() = default;
+~TextViewTextCursor() = default;  // override
 
 // public
 void

@@ -161,7 +161,7 @@ TextView(QWidget* parent /*= nullptr*/)
       m_viewportFullyVisibleLineCount{0}, m_viewportVisibleLineCount{0},
       m_firstVisibleLineIndex{0}, m_lastFullyVisibleLineIndex{0}, m_lastVisibleLineIndex{0}
 {
-    Base::horizontalScrollBar()->setTracking(true);
+    horizontalScrollBar()->setTracking(true);
 }
 
 // Required when using std::unique_ptr<> with forward declarations.
@@ -176,9 +176,16 @@ TextView::
 setDoc(const std::shared_ptr<TextViewDocument>& doc)
 {
     m_docView->setDoc(doc);
+    afterDocUpdate();
+}
+
+// TODO: Review this method.  If we still need it, carefully document *WHY*.
+void
+TextView::
+afterDocUpdate()
+{
     m_textCursor->reset();
     m_isAfterSetDoc = true;
-    // Or: this->update()?
     viewport()->update();
 }
 

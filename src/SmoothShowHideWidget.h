@@ -17,6 +17,7 @@ class SmoothShowHideWidget : public QWidget
 
 public:
     using Base = QWidget;
+
     explicit SmoothShowHideWidget(QWidget* parent = nullptr, Qt::WindowFlags f = Qt::WindowFlags());
     ~SmoothShowHideWidget() override = default;
 

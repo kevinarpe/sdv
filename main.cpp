@@ -12,18 +12,7 @@
 #include "src/QtHash.h"
 #include "src/Constants.h"
 #include "src/TextFormat.h"
-
-std::unordered_map<SDV::JsonNodeType, SDV::TextFormat>
-create();
-
-bool
-isStdinNotTerminal();
-
-std::unordered_set<QString>
-createSet(QStringList* filePathList);
-
-QString
-getAbsFilePath(const QString& filePath);
+#include "src/MainWindowThreadWorker.h"
 
 /*
  * Views: compressed (text), pretty print (text), QTreeView
@@ -83,65 +72,8 @@ getAbsFilePath(const QString& filePath);
  * x Parsing of input... be "gentle" on failures
  * x Selected text should have range and count of lines & char count displayed in status bar
  * x After closing document, clear the status bar.
+ * x Double check if all QObject/QWidget sub-classes have *at least*: ~$class() override = default;
  */
-/*
-Raise bug ticket.  Cannot view TextViewTextCursor in GDB.  Why?
-
-Traceback (most recent call last):
-  File "/home/kca/saveme/clion/latest/bin/gdb/renderers/libstdcxx/v6/printers.py", line 1300, in __call__
-    return self.lookup[basename].invoke(val)
-  File "/home/kca/saveme/clion/latest/bin/gdb/renderers/libstdcxx/v6/printers.py", line 1237, in invoke
-    return self.function(self.name, value)
-  File "/home/kca/saveme/clion/latest/bin/gdb/renderers/default/libstdcxx_printers.py", line 128, in __init__
-    raise ValueError("Unsupported implementation for unique_ptr: %s" % impl_type)
-ValueError: Unsupported implementation for unique_ptr: std::__uniq_ptr_data<SDV::TextViewGraphemeCursor, std::default_delete<SDV::TextViewGraphemeCursor>, true, true>
- */
-int main(int argc, char *argv[])
-{
-    QApplication app(argc, argv);
-    QCommandLineParser parser;
-    parser.setApplicationDescription(SDV::MainWindow::kWindowTitle);
-    parser.addHelpOption();
-    QCommandLineOption fileOption(QStringList() << "f" << "file", "Input file or - for stdin", "FILE_PATH");
-    assert(parser.addOption(fileOption));
-    // missing docs that automatically call showHelp(EXIT_SUCCESS)
-    parser.process(app);
-
-    SDV::MainWindowManager mainWindowManager;
-    const std::unordered_map<SDV::JsonNodeType, SDV::TextFormat> formatMap{create()};
-
-    // Ex: [ ] or [ "-" ] or [ "data/twitter.json" ] or [ "-", "data/twitter.json" ]
-    // @EmptyContainerAllowed
-    QStringList filePathList = parser.values(fileOption);
-    if (isStdinNotTerminal()) {
-        filePathList.append(SDV::Constants::kStdinFileName);
-    }
-
-    if (false == filePathList.isEmpty()) {
-        // Be *very* carefuly about uniqueness and ordering.
-        // Ideally, we want to preserve original ordering, but remove absolute file path dupes.
-        // A bit tricky...
-        std::unordered_set<QString> absFilePathSet = createSet(&filePathList);
-        SDV::MainWindow* prevMainWindow = nullptr;
-        for (const QString& absFilePath : filePathList) {
-
-            if (absFilePathSet.contains(absFilePath)) {
-                absFilePathSet.erase(absFilePath);
-                SDV::MainWindow* mainWindow = new SDV::MainWindow(mainWindowManager, formatMap, absFilePath);
-                mainWindow->setGeometry(prevMainWindow);
-                mainWindow->show();
-                prevMainWindow = mainWindow;
-            }
-        }
-    }
-    else {
-        SDV::MainWindow* mainWindow = new SDV::MainWindow(mainWindowManager, formatMap);
-        mainWindow->setGeometry();
-        mainWindow->show();
-    }
-    const int x = app.exec();
-    return x;
-}
 
 std::unordered_map<SDV::JsonNodeType, SDV::TextFormat>
 create()
@@ -235,6 +167,20 @@ isStdinNotTerminal()
 #endif  // __linux__
 }
 
+QString
+getAbsFilePath(const QString& filePath)
+{
+    if (SDV::Constants::kStdinFileName == filePath) {
+        return filePath;
+    }
+    else {
+        const QFileInfo fi(filePath);
+        // Ex: "/home/kca/saveme/qt5/structured-data-viewer/cmake-build-debug/data/twitter.json"
+        const QString x = fi.absoluteFilePath();
+        return x;
+    }
+}
+
 std::unordered_set<QString>
 createSet(QStringList* filePathList)
 {
@@ -248,16 +194,79 @@ createSet(QStringList* filePathList)
     return absFilePathSet;
 }
 
-QString
-getAbsFilePath(const QString& filePath)
+SDV::MainWindowInput
+createInput(const QString& absFilePath)
 {
-    if (SDV::Constants::kStdinFileName == filePath) {
-        return filePath;
+    if (SDV::Constants::kStdinFileName == absFilePath) {
+        return SDV::MainWindowInput::kStdin;
     }
     else {
-        const QFileInfo fi(filePath);
-        // Ex: "/home/kca/saveme/qt5/structured-data-viewer/cmake-build-debug/data/twitter.json"
-        const QString x = fi.absoluteFilePath();
+        SDV::MainWindowInput x = SDV::MainWindowInput::createFile(absFilePath);
         return x;
     }
+}
+
+/*
+Raise bug ticket.  Cannot view TextViewTextCursor in GDB.  Why?
+
+Traceback (most recent call last):
+  File "/home/kca/saveme/clion/latest/bin/gdb/renderers/libstdcxx/v6/printers.py", line 1300, in __call__
+    return self.lookup[basename].invoke(val)
+  File "/home/kca/saveme/clion/latest/bin/gdb/renderers/libstdcxx/v6/printers.py", line 1237, in invoke
+    return self.function(self.name, value)
+  File "/home/kca/saveme/clion/latest/bin/gdb/renderers/default/libstdcxx_printers.py", line 128, in __init__
+    raise ValueError("Unsupported implementation for unique_ptr: %s" % impl_type)
+ValueError: Unsupported implementation for unique_ptr: std::__uniq_ptr_data<SDV::TextViewGraphemeCursor, std::default_delete<SDV::TextViewGraphemeCursor>, true, true>
+ */
+int main(int argc, char *argv[])
+{
+    QApplication app(argc, argv);
+    QCommandLineParser parser{};
+    parser.setApplicationDescription(SDV::MainWindow::kWindowTitle);
+    parser.addHelpOption();
+    QCommandLineOption fileOption(QStringList() << "f" << "file", "Input file or - for stdin", "FILE_PATH");
+    assert(parser.addOption(fileOption));
+    // missing docs that automatically call showHelp(EXIT_SUCCESS)
+    parser.process(app);
+
+    SDV::MainWindowManager mainWindowManager{};
+    const std::unordered_map<SDV::JsonNodeType, SDV::TextFormat> formatMap{create()};
+    SDV::MainWindowThreadWorker* const mainWindowThreadWorker = SDV::MainWindowThreadWorker::create(formatMap);
+
+    // Ex: [ ] or [ "-" ] or [ "data/twitter.json" ] or [ "-", "data/twitter.json" ]
+    // @EmptyContainerAllowed
+    QStringList filePathList = parser.values(fileOption);
+    if (isStdinNotTerminal())
+    {
+        filePathList.append(SDV::Constants::kStdinFileName);
+    }
+
+    if (filePathList.isEmpty())
+    {
+        SDV::MainWindow* mainWindow =
+            new SDV::MainWindow(mainWindowManager, formatMap, mainWindowThreadWorker, SDV::MainWindowInput::kNone);
+        mainWindow->adjustGeometry();
+        mainWindow->show();
+    }
+    else {
+        // Be *very* carefuly about uniqueness and ordering.
+        // Ideally, we want to preserve original ordering, but remove absolute file path dupes.
+        // A bit tricky...
+        std::unordered_set<QString> absFilePathSet = createSet(&filePathList);
+        SDV::MainWindow* prevMainWindow = nullptr;
+        for (const QString& absFilePath : filePathList)
+        {
+            if (absFilePathSet.contains(absFilePath))
+            {
+                absFilePathSet.erase(absFilePath);
+                SDV::MainWindowInput input = createInput(absFilePath);
+                SDV::MainWindow* mainWindow = new SDV::MainWindow(mainWindowManager, formatMap, mainWindowThreadWorker, input);
+                mainWindow->adjustGeometry(prevMainWindow);
+                mainWindow->show();
+                prevMainWindow = mainWindow;
+            }
+        }
+    }
+    const int x = app.exec();
+    return x;
 }

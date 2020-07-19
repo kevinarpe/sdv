@@ -28,8 +28,8 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(JsonNodeTypes)
 
 struct IsRichText
 {
-    static const IsRichText YES;
-    static const IsRichText NO;
+    static const IsRichText kYes;
+    static const IsRichText kNo;
 
     const Qt::TextFormat textFormat;
 private:

@@ -21,6 +21,7 @@ class PlainTextEditDecorator : public QObject
 
 public:
     using Base = QObject;
+
     PlainTextEditDecorator(PlainTextEdit& parent);
     ~PlainTextEditDecorator() override = default;
 

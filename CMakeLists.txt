@@ -121,6 +121,23 @@ add_executable(sdv
         src/TextViewLineSelection.cpp
         src/TextViewLineSelection.h
         src/QKeyEvents.cpp
-        src/QKeyEvents.h)
+        src/QKeyEvents.h
+        src/QStrings.cpp
+        src/QStrings.h
+        src/TextViewTextStatsService.cpp
+        src/TextViewTextStatsService.h
+        src/QFileInfos.cpp
+        src/QFileInfos.h
+        src/MainWindowInputStream.cpp
+        src/MainWindowInputStream.h
+        src/SmartPointers.h
+        src/MainWindowThreadWorker.cpp
+        src/MainWindowThreadWorker.h
+        src/SharedPointerMap.h
+        src/ThreadSafeSharedPointerMap.h
+        src/MainWindowInput.cpp
+        src/MainWindowInput.h
+        src/NextIdService.cpp
+        src/NextIdService.h)
 
 target_link_libraries(sdv Qt5::Widgets)

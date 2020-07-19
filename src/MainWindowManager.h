@@ -7,7 +7,9 @@
 
 #include <unordered_set>
 #include <vector>
+#include <memory>
 #include <QString>
+#include "MainWindowInput.h"
 
 namespace SDV {
 
@@ -17,9 +19,9 @@ class MainWindow;
 class MainWindowManager {
 
 public:
-    explicit MainWindowManager() = default;
+    MainWindowManager() = default;
 
-    MainWindowManagerToken
+    std::unique_ptr<MainWindowManagerToken>
     add(MainWindow& mainWindow);
 
     std::unordered_set<MainWindow*>::iterator
@@ -30,20 +32,20 @@ public:
 
     std::size_t size() const { return m_mainWindowSet.size(); }
 
-    void tryAddFileOpenRecent(const QString& absFilePath);
-    void afterFileOpen(const QString& absFilePath);
-    void afterFileClose(const QString& absFilePath);
+    bool tryAddRecentFileOpen(const MainWindowInput& input);
+    void afterOpenInput(const MainWindowInput& input);
+    void afterCloseInput(const MainWindowInput& input);
 
-    const std::vector<QString>& fileOpenRecentAbsFilePathVec() { return m_fileOpenRecentAbsFilePathVec; }
-    const std::vector<QString>& openAbsFilePathVec() { return m_openAbsFilePathVec; }
+    const std::vector<MainWindowInput>& fileOpenRecentVec() const { return m_fileOpenRecentVec; }
+    const std::vector<MainWindowInput>& openInputVec() const { return m_openInputVec; }
 
 private:
     struct Private;
     std::unordered_set<MainWindow*> m_mainWindowSet;
-    std::vector<QString> m_fileOpenRecentAbsFilePathVec;
-    std::vector<QString> m_openAbsFilePathVec;
+    std::vector<MainWindowInput> m_fileOpenRecentVec;
+    std::vector<MainWindowInput> m_openInputVec;
 
-    void remove_(MainWindow& mainWindow);
+    void remove(MainWindow& mainWindow);
     friend class MainWindowManagerToken;
 };
 

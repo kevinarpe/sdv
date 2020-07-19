@@ -189,13 +189,12 @@ TextViewLineNumberArea::
 paintEvent(QPaintEvent* event)  // override
 {
     const QRect& eventRect = event->rect();
-    const QRectF eventRectF{eventRect};
     QPainter painter{this};
     const QPalette& palette = this->palette();
     const QBrush& bgBrush = QBrush{palette.color(QPalette::ColorRole::Window)};
     painter.fillRect(eventRect, bgBrush);
-    const bool isTextCursorLineBgColorEnabled = (bgBrush != m_textView.textCursorLineBackgroundBrush());
 
+    const bool isTextCursorLineBgColorEnabled = (bgBrush != m_textView.textCursorLineBackgroundBrush());
     painter.setPen(m_textPen);
     painter.setFont(m_textView.font());
 
@@ -210,32 +209,33 @@ paintEvent(QPaintEvent* event)  // override
     // Right margin is one char wide.
     const qreal width = this->width() - (m_rightMarginCharWidthRatio * charWidth);
     // Note: If font leading is not zero, we *may* want to use font height here, instead of line spacing.
-    QRectF drawTextRect{QPointF{x, y}, QSizeF{width, lineSpacing}};
+    QRectF drawTextRectF{QPointF{x, y}, QSizeF{width, lineSpacing}};
     Private::setClipRect(*this, event, &painter);
     const TextViewGraphemePosition& pos = m_textView.textCursor().position();
     const std::vector<int>& visibleLineIndexVec = m_textView.docView().visibleLineIndexVec();
     const int firstVisibleLineIndex = m_textView.firstVisibleLineIndex();
+    const QRectF eventRectF{eventRect};
     std::vector<int>::const_iterator iter = m_textView.docView().findOrAssert(firstVisibleLineIndex);
 
     for ( ; visibleLineIndexVec.end() != iter; ++iter)
     {
-        const int lineIndex = *iter;
-        const QString& number = QString::number(1 + lineIndex);
         // eventRectF may be less than whole widget.  If so, only repaint necessary area.
-        if (eventRectF.intersects(drawTextRect))
+        if (eventRectF.intersects(drawTextRectF))
         {
+            const int lineIndex = *iter;
             if (isTextCursorLineBgColorEnabled && lineIndex == pos.pos.lineIndex)
             {
                 // Note: If font leading is not zero, we *may* want to use font height here, instead of line spacing.
-                QRectF r{drawTextRect.topLeft(), QSizeF{qreal(this->width()), lineSpacing}};
+                QRectF r{drawTextRectF.topLeft(), QSizeF{qreal(this->width()), lineSpacing}};
                 painter.fillRect(r, m_textView.textCursorLineBackgroundBrush());
             }
-            painter.drawText(drawTextRect, Qt::AlignmentFlag::AlignRight, number);
+            const QString& number = QString::number(1 + lineIndex);
+            painter.drawText(drawTextRectF, Qt::AlignmentFlag::AlignRight, number);
         }
-        if (drawTextRect.bottom() >= height()) {
+        if (drawTextRectF.bottom() > eventRectF.bottom() || drawTextRectF.bottom() >= height()) {
             break;
         }
-        drawTextRect.moveTop(drawTextRect.top() + lineSpacing);
+        drawTextRectF.moveTop(drawTextRectF.top() + lineSpacing);
     }
 }
 

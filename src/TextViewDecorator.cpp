@@ -394,6 +394,7 @@ setJsonTree(const std::shared_ptr<JsonTree>& jsonTree)
     assert(nullptr != jsonTree);
     m_jsonTree = jsonTree;
     Private::hideAllUsedTreeNodes(*this);
+    // Intentional: Do not call Private::update(...).  Wait for TextView::signalVisibleLinesChanged().
 }
 
 // public

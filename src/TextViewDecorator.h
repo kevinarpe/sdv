@@ -25,6 +25,7 @@ public:
     static const QColor kTextColor;  // {Qt::GlobalColor::darkGray}
 
     using Base = QObject;
+
     TextViewDecorator(TextView& parent);
     ~TextViewDecorator() override = default;
 

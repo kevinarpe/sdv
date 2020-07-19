@@ -18,8 +18,10 @@ class GoToWidget : public SmoothShowHideWidget
 
 public:
     using Base = SmoothShowHideWidget;
+
     explicit GoToWidget(QWidget* parent = nullptr);
     ~GoToWidget() override = default;
+
     FindLineEdit* findLineEdit() const { return m_findLineEdit; }
 
 signals:

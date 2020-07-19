@@ -27,8 +27,9 @@ class TextViewTextCursor : public QObject
 
 public:
     using Base = QObject;
+
     TextViewTextCursor(TextView& textView, const std::shared_ptr<TextViewDocumentView>& docView);
-    ~TextViewTextCursor();
+    ~TextViewTextCursor() override;
 
 //    enum class DisplayMode { Blinking, Solid };
     void reset();

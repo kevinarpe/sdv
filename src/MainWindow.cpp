@@ -4,22 +4,22 @@
 
 #include "MainWindow.h"
 #include <utility>
-#include <fstream>
-//#include <rapidjson/document.h>
-#include "rapidjson/document.h"
-#include <rapidjson/istreamwrapper.h>
 #include <rapidjson/error/en.h>
-#include <rapidjson/prettywriter.h>
+#include <QMessageBox>
+#include <QAction>
+#include <QLabel>
+#include <QFileDialog>
+#include <QApplication>
+#include <QRegularExpression>
+#include <QHBoxLayout>
+#include <QMenuBar>
+#include <QScreen>
+#include <QStyle>
+#include <QMimeData>
 #include <QDebug>
-#include <iostream>
 #include "Algorithm.h"
 #include "MainWindowManager.h"
 #include "StatusBar.h"
-#include "TabWidget.h"
-#include "TextWidget.h"
-#include "PlainTextEdit.h"
-#include "PrettyWriter2.h"
-#include "QTextBoundaryFinders.h"
 #include "TextView.h"
 #include "TextViewLineNumberArea.h"
 #include "TextViewDocument.h"
@@ -27,10 +27,13 @@
 #include "PaintForegroundFunctor.h"
 #include "PaintForegroundContextImp.h"
 #include "TextViewDecorator.h"
+#include "QFileInfos.h"
+#include "MainWindowInputStream.h"
+#include "MainWindowThreadWorker.h"
+#include "TextViewTextStatsService.h"
+#include "JsonTree.h"
 
 namespace SDV {
-
-//namespace SDV {
 
 struct PaintForegroundFunctorImp : public PaintForegroundFunctor
 {
@@ -48,8 +51,6 @@ struct PaintForegroundFunctorImp : public PaintForegroundFunctor
 private:
     const QPen m_pen;
 };
-
-//}  // namespace SDV
 
 static const QColor kColorDarkBlue = QColor{0, 0, 128};
 static const QColor kColorBlue = QColor{0, 0, 255};
@@ -84,48 +85,28 @@ static const std::unordered_map<JsonNodeType, std::shared_ptr<PaintForegroundFun
 
 static const QLocale kLocale{};
 
-struct shared_ptrs
-{
-    template<typename T>
-    static std::shared_ptr<T>
-    do_not_delete(T* ptr)
-    {
-        // Ref: https://stackoverflow.com/a/20131949/257299
-        return std::shared_ptr<T>{ptr, [](T*){}};
-    }
-};
-
 struct MainWindow::Private
 {
     static void
     openFilePathList(MainWindow& self, const QStringList& absFilePathList)
     {
-        assert( ! absFilePathList.isEmpty());
+        assert(false == absFilePathList.isEmpty());
         // If there are multiple windows to be activated, only activate the *last*.
         std::optional<MainWindow*> optionalWindowToBeActivated{};
         const int count = absFilePathList.size();
-        for (int i = 0; i < count; ++i) {
+        for (int i = 0; i < count; ++i)
+        {
             const QString& absFilePath = absFilePathList[i];
-            const std::optional<MainWindow*>& optionalWindow = tryFindWindow(self, absFilePath);
+            const std::optional<MainWindow*> optionalWindow = tryFindWindow(self, absFilePath);
             if (optionalWindow) {
                 optionalWindowToBeActivated = optionalWindow;
                 continue;
             }
             // It would be weird to have last file path opened, but then window activate for previous file.
             optionalWindowToBeActivated = std::nullopt;
-            // Use this window if not file open.
-            if (self.m_absFilePath.isEmpty()) {
-                self.m_absFilePath = absFilePath;
-                openFile(self);
-            }
-            else {
-                MainWindow* mw =
-                    new MainWindow(
-                        self.m_mainWindowManagerToken.getMainWindowManager(), self.m_formatMap, absFilePath,
-                        self.parentWidget(), self.windowFlags());
-                mw->setGeometry(&self);
-                mw->show();
-            }
+
+            MainWindowInputStream inputStream{self.m_input};
+            openInputStream(self, inputStream);
         }
         if (optionalWindowToBeActivated) {
             (*optionalWindowToBeActivated)->activateWindow();
@@ -136,187 +117,31 @@ struct MainWindow::Private
     tryFindWindow(MainWindow& self, const QString& absFilePath)
     {
         // Is the file open in this window?
-        if (absFilePath == self.m_absFilePath) {
+        if (isMainWindowMatch(self, absFilePath)) {
             return &self;
         }
         // Is the file open in another window?
-        for (MainWindow* mw : self.m_mainWindowManagerToken.getMainWindowManager()) {
-            if (mw->absFilePath() == absFilePath) {
+        for (MainWindow* mw : self.m_mainWindowManagerToken->getMainWindowManager())
+        {
+            if (isMainWindowMatch(*mw, absFilePath)) {
                 return mw;
             }
         }
         return std::nullopt;
     }
 
-    static void
-    openFile(MainWindow& self)
+    static bool
+    isMainWindowMatch(const MainWindow& mw, const QString& absFilePath)
     {
-        Input input{getInput(self)};
-        if (input.bufferCapacity < 0) {
-            return;
-        }
-        // Ref: https://stackoverflow.com/a/45257251/257299
-        rapidjson::IStreamWrapper isw{*input.inputStream};
-        rapidjson::Document doc;
-        doc.ParseStream(isw);
-        if (doc.HasParseError()) {
-            // Ref: https://github.com/Tencent/rapidjson/blob/master/example/pretty/pretty.cpp
-            const char* parserError = rapidjson::GetParseError_En(doc.GetParseError());
-            const QString& text =
-                QString("File: %1\nFailed to parse at offset %2: %3")
-                    .arg(self.m_absFilePath).arg(doc.GetErrorOffset()).arg(parserError);
-
-            QMessageBox::critical(&self, kWindowTitle, text,
-                                  QMessageBox::StandardButtons(QMessageBox::StandardButton::Ok),
-                                  QMessageBox::StandardButton::Ok);
-            return;
-        }
-        openDoc(self, doc, input.bufferCapacity, input.inputDescription);
-        self.m_mainWindowManagerToken.getMainWindowManager().afterFileOpen(self.m_absFilePath);
-    }
-
-    struct Input {
-        // Why a shared_ptr?  std::istream is weird about coping.
-        // Ref: https://stackoverflow.com/questions/2159452/c-assign-cin-to-an-ifstream-variable
-        std::shared_ptr<std::istream> inputStream;
-        const qint64 bufferCapacity;
-        const QString inputDescription;
-
-        static const Input kInvalid;
-        static const Input kStdin;
-    };
-
-    static Input
-    getInput(MainWindow& self) {
-        if (QLatin1Char('-') == self.m_absFilePath) {
-            return Input::kStdin;
-        }
-        QFile file(self.m_absFilePath);
-        qint64 size = -1;
-        // Scope to force RAII destructor call on QFile file.
-        {
-            // Ref: https://stackoverflow.com/questions/9465727/convert-qfile-to-file
-//            fopen(qPrintable(m_absFilePath), )
-            if ( ! file.open(QIODevice::ReadOnly)) {
-                const QString& text =
-                    QString("Failed to open file: %1\n\nError: %2").arg(self.m_absFilePath).arg(file.errorString());
-                QMessageBox::critical(&self, kWindowTitle, text,
-                                      QMessageBox::StandardButtons(QMessageBox::StandardButton::Ok),
-                                      QMessageBox::StandardButton::Ok);
-                return Input::kInvalid;
-            }
-            size = file.size();
-            const int fd = file.handle();
-            int dummy = 1;  // debug breakpoint
-        }
-        // Ref: qPrintable(): https://wiki.qt.io/Technical_FAQ#How_can_I_convert_a_QString_to_char.2A_and_vice_versa.3F
-        // Ref: https://stackoverflow.com/a/37133527/257299
-        std::shared_ptr<std::ifstream> ifs = std::make_shared<std::ifstream>(qPrintable(self.m_absFilePath));
-        // Ref: https://stackoverflow.com/a/2954161/257299
-//    std::ifstream ifs(m_absFilePath.toStdString());
-        if ( ! ifs->is_open()) {
-            // Ref: https://stackoverflow.com/questions/17337602/how-to-get-error-message-when-ifstream-open-fails
-            // errno: do some detective work to discover WHY
-            const QString& text = QString("Failed to open file: %1").arg(self.m_absFilePath);
-            QMessageBox::critical(&self, kWindowTitle, text,
-                                  QMessageBox::StandardButtons(QMessageBox::StandardButton::Ok),
-                                  QMessageBox::StandardButton::Ok);
-            return Input::kInvalid;
-        }
-        return Input{
-            .inputStream{ifs},
-            .bufferCapacity = size,
-            .inputDescription{file.fileName()}
-        };
-    }
-
-    /**
-     * @param inputDescription
-     *        usually filename, but might be {@link kStdin} or {@link kClipboard}
-     */
-    static void
-    openDoc(MainWindow& self, const rapidjson::Document& doc, const int bufferCapacity, const QString& inputDescription)
-    {
-        rapidjson::StringBuffer sb{nullptr, static_cast<size_t>(bufferCapacity)};
-        PrettyWriter2 pw{sb, static_cast<size_t>(bufferCapacity), self.m_formatMap};
-        assert(doc.Accept(pw));
-        const std::shared_ptr<JsonTree>& jsonTree = pw.result();
-//        self.m_textWidget->setResult(result);
-//        self.m_tabWidget->setHidden(false);
-//        self.m_textWidget->setVisible(true);
-        self.m_textViewDecorator->setJsonTree(jsonTree);
-        const QStringList& lineList = jsonTree->jsonText.split(QRegularExpression{"\\r?\\n"});
-        std::vector<QString> lineVec{lineList.begin(), lineList.end()};
-        applyFormats(self, jsonTree);
-        self.m_textView->setDoc(std::make_shared<TextViewDocument>(std::move(lineVec)));
-        self.m_textView->setVisible(true);
-        self.m_fileCloseAction->setEnabled(true);
-
-        if (kClipboardAbsFilePath != self.m_absFilePath && kStdinAbsFilePath != self.m_absFilePath)
-        {
-            self.m_mainWindowManagerToken.getMainWindowManager().tryAddFileOpenRecent(self.m_absFilePath);
-        }
-        self.setWindowTitle(inputDescription + " - " + kWindowTitle);
-        setStatusBarText(self, jsonTree);
-    }
-
-    static void
-    applyFormats(MainWindow& self, const std::shared_ptr<JsonTree>& jsonTree)
-    {
-        std::unordered_map<int, TextView::ForegroundFormatSet>& map = self.m_textView->lineIndex_To_ForegroundFormatSet_Map();
-        map.clear();
-
-        for (const JsonTree::JsonNodeLineSegment& s : jsonTree->jsonNodeLineSegmentVec)
-        {
-            TextView::ForegroundFormatSet& set = map[s.lineIndex];
-
-            const std::shared_ptr<PaintForegroundFunctor>& f =
-                Algorithm::Map::getOrAssert(kJsonNodeType_To_PaintFgFunctor, s.jsonNodeType);
-
-            Algorithm::Set::insertNewOrAssert(set, LineFormatForeground{s.seg, f});
-        }
-        // Intentional: Do not call self.m_textView->update() here, as self.m_textView->setDoc() will call it.
-    }
-
-    static void
-    setStatusBarText(MainWindow& self, const std::shared_ptr<JsonTree>& jsonTree)
-    {
-        // In practice, RapidJSON does not append a find newline.
-        const int lineCount = 1 + jsonTree->jsonText.count(QLatin1Char{'\n'});
-        const int graphemeCount = QTextBoundaryFinders::countBoundaries(QTextBoundaryFinder::BoundaryType::Grapheme, jsonTree->jsonText);
-        const int byteCount = countBytes(jsonTree->jsonText);
-
-        self.m_statusBarTextViewLabelBaseText =
-            QString("%1 %2 | %3 Unicode %4 | %5 UTF-8 %6")
-                .arg(kLocale.toString(lineCount))
-                .arg(1 == lineCount ? "line" : "lines")
-                .arg(kLocale.toString(graphemeCount))
-                .arg(1 == graphemeCount ? "char" : "chars")
-                .arg(kLocale.toString(byteCount))
-                .arg(1 == byteCount ? "byte" : "bytes");
-
-        self.m_statusBar->textViewLabel()->setText(self.m_statusBarTextViewLabelBaseText);
-    }
-
-    static int
-    countBytes(const QString& text)
-    {
-        int byteCount = 0;
-        const QChar* data = text.constData();
-        const int codePointCount = text.size();
-        for (int i = 0; i < codePointCount; ++i, ++data) {
-            ++byteCount;
-            if (data->unicode() > 0xff) {
-                ++byteCount;
-            }
-        }
-        return byteCount;
+        const bool x = (mw.m_input.isFile() && mw.m_input.description() == absFilePath);
+        return x;
     }
 
     static bool
     shallClose(MainWindow& self)
     {
-        if (1 == self.m_mainWindowManagerToken.getMainWindowManager().size() && self.m_absFilePath.isEmpty()) {
+//        LAST: HOW DOES THIS WORK IF WE HAVE A BUNCH OF NON-FILES OPEN?  (CLIPBOARD & STDIN?)
+        if (1 == self.m_mainWindowManagerToken->getMainWindowManager().size() && self.m_input.isNone()) {
             const bool x = shallExit(self);
             return x;
         }
@@ -327,12 +152,13 @@ struct MainWindow::Private
                                        QMessageBox::StandardButton::Yes));
         if (shallClose)
         {
-            self.m_mainWindowManagerToken.getMainWindowManager().afterFileClose(self.m_absFilePath);
+            self.m_mainWindowManagerToken->getMainWindowManager().afterCloseInput(self.m_input);
 
-            if (1 == self.m_mainWindowManagerToken.getMainWindowManager().size()) {
-                self.m_absFilePath.clear();
-//                self.m_tabWidget->setHidden(true);
-                self.m_textWidget->setVisible(false);
+            if (1 == self.m_mainWindowManagerToken->getMainWindowManager().size())
+            {
+                self.m_input = MainWindowInput::kNone;
+                self.setWindowTitle(kWindowTitle);
+                self.m_textView->setVisible(false);
                 self.m_fileCloseAction->setEnabled(false);
                 self.m_statusBarTextViewLabelBaseText = "";
                 self.m_statusBar->textViewLabel()->setText(self.m_statusBarTextViewLabelBaseText);
@@ -352,45 +178,40 @@ struct MainWindow::Private
                                        QMessageBox::StandardButton::Yes));
         return x;
     }
-//
-//    static void
-//    slotTabChanged(MainWindow& self, const int tabIndex)
-//    {
-//        if (0 == tabIndex) {
-//            self.m_statusBar->textViewLabel()->setVisible(true);
-//        }
-//        else if (1 == tabIndex) {
-//            self.m_statusBar->textViewLabel()->setVisible(false);
-//        }
-//        else {
-//            assert(false);
-//        }
-//    }
 
+    // TODO: Is this triggered when selection is cleared?  It seems not...
     static void
-    slotTextSelectionChanged(MainWindow& self)
+    slotSelectedTextChanged(MainWindow& self)
     {
-        const QTextCursor& textCursor = self.m_textWidget->plainTextEdit()->textCursor();
-        if (textCursor.selectionStart() == textCursor.selectionEnd()) {
+        const TextViewSelection& selection = self.m_textView->textCursor().selection();
+        if (false == selection.isValid())
+        {
             self.m_statusBar->textViewLabel()->setText(self.m_statusBarTextViewLabelBaseText);
             return;
         }
-        const QString& selectedText = textCursor.selectedText();
-        // Important: New line ('\n') is not used!
-        // Ref: https://graphemica.com/2029
-        const int lineCount =
-            1 + selectedText.count(QChar::ParagraphSeparator) + (selectedText.endsWith(QChar::ParagraphSeparator) ? -1 : 0);
-        const int graphemeCount =
-            QTextBoundaryFinders::countBoundaries(QTextBoundaryFinder::BoundaryType::Grapheme, selectedText);
-        const int byteCount = countBytes(selectedText);
-        const QString& x = self.m_statusBarTextViewLabelBaseText
-                           + QString{" || <b><u>Selection</u></b>: %1 %2 | %3 Unicode %4 | %5 UTF-8 %6"}
-                               .arg(kLocale.toString(lineCount))
-                               .arg(1 == lineCount ? "line" : "lines")
-                               .arg(kLocale.toString(graphemeCount))
-                               .arg(1 == graphemeCount ? "char" : "chars")
-                               .arg(kLocale.toString(byteCount))
-                               .arg(1 == byteCount ? "byte" : "bytes");
+        const int requestId = self.m_threadWorker->nextRequestId();
+        self.m_textStats.requestIds.slotCalcTextSelectionStatsVec.push_back(requestId);
+        assert(QMetaObject::invokeMethod(self.m_threadWorker,
+            [&self, selection, requestId]() {
+                self.m_threadWorker->slotCalcTextSelectionStats(requestId, self.m_textStats.serviceId, selection);
+            }));
+    }
+
+    static void
+    slotCalcTextSelectionStatsComplete(MainWindow& self, const MainWindowThreadWorker::CalcTextSelectionStatsResult& result)
+    {
+        if (false == Algorithm::Vector::tryErase(self.m_textStats.requestIds.slotCalcTextSelectionStatsVec, result.requestId)) {
+            return;
+        }
+        const QString& x =
+            self.m_statusBarTextViewLabelBaseText
+            + QString{" || <b><u>Selection</u></b>: %1 %2 | %3 Unicode %4 | %5 UTF-8 %6"}
+                .arg(kLocale.toString(result.textStats.lineCount))
+                .arg(1 == result.textStats.lineCount ? "line" : "lines")
+                .arg(kLocale.toString(result.textStats.graphemeCount))
+                .arg(1 == result.textStats.graphemeCount ? "char" : "chars")
+                .arg(kLocale.toString(result.textStats.utf8ByteCount))
+                .arg(1 == result.textStats.utf8ByteCount ? "byte" : "bytes");
 
         self.m_statusBar->textViewLabel()->setText(x);
     }
@@ -405,7 +226,7 @@ struct MainWindow::Private
         const QString filterStr = filterList.join(";;");
         QStringList absFilePathList = QFileDialog::getOpenFileNames(&self, "Select one or more files to open",
                                                                     QString(), filterStr, &selectedFilter);
-        if ( ! absFilePathList.isEmpty()) {
+        if (absFilePathList.isEmpty() == false) {
             openFilePathList(self, absFilePathList);
         }
     }
@@ -413,8 +234,9 @@ struct MainWindow::Private
     static void
     slotFileOpenRecentMenuTriggered(MainWindow& self, QAction* action)
     {
-        // Ex: "/home/kca/saveme/qt5/structured-data-viewer/cmake-build-debug/data/twitter.json"
-        const QString& absFilePath = action->data().toString();
+        const MainWindowInput& input = Algorithm::Map::getOrAssert(self.m_windowMenuAction_To_Input_Map, action);
+        assert(input.isFile());
+        const QString& absFilePath = input.description();
         openFilePathList(self, QStringList{{absFilePath}});
     }
 
@@ -452,47 +274,208 @@ struct MainWindow::Private
     slotExit(MainWindow& self)
     {
         if (shallExit(self)) {
-            QCoreApplication::exit(EXIT_SUCCESS);
+            self.m_isClosing = true;
+            self.close();
         }
     }
 
     static void
-    slotOpenFromClipboard(MainWindow& self)
+    openInput(MainWindow& self, const MainWindowInput& input)
     {
-        QClipboard* clipboard = QGuiApplication::clipboard();
+        const MainWindowInput::Type type = input.type();
+        switch (type)
+        {
+            case MainWindowInput::Type::None:
+            {
+                break;
+            }
+            case MainWindowInput::Type::Clipboard:
+            {
+                slotOpenClipboardText(self);
+                break;
+            }
+            case MainWindowInput::Type::Stdin:
+            case MainWindowInput::Type::File:
+            {
+                MainWindowInputStream inputStream{input};
+                openInputStream(self, inputStream);
+                break;
+            }
+            default: assert(false);
+        }
+    }
+
+    static void
+    slotOpenClipboardText(MainWindow& self)
+    {
+        QClipboard* const clipboard = QGuiApplication::clipboard();
         const QString& text = clipboard->text();
-        if (text.isEmpty()) {
+        if (text.isEmpty())
+        {
             QMessageBox::warning(&self, kWindowTitle, "Clipboard contains no text",
-                                 QMessageBox::StandardButtons(QMessageBox::StandardButton::Ok),
+                                 QMessageBox::StandardButtons{QMessageBox::StandardButton::Ok},
                                  QMessageBox::StandardButton::Ok);
             return;
         }
-        rapidjson::Document doc;
-        const char* str = qPrintable(text);
-        doc.Parse(str);
-        if (doc.HasParseError()) {
+        const int requestId = self.m_threadWorker->nextRequestId();
+        self.m_textStats.requestIds.slotOpenClipboardTextVec.push_back(requestId);
+        assert(QMetaObject::invokeMethod(self.m_threadWorker,
+            [&self, requestId, &text]() {
+                // The return signal is connected to 'slotOpenClipboardTextComplete(...)'.
+                self.m_threadWorker->slotOpenClipboardText(requestId, self.m_textStats.serviceId, text);
+            }));
+    }
+
+    static void
+    slotOpenClipboardTextComplete(MainWindow& self, const MainWindowThreadWorker::OpenClipboardTextResult& result)
+    {
+        if (false == isSignalForThisInstance(self.m_textStats.requestIds.slotOpenClipboardTextVec, result.requestId)) {
+            return;
+        }
+        if (result.jsonParseResult.IsError())
+        {
             // Ref: https://github.com/Tencent/rapidjson/blob/master/example/pretty/pretty.cpp
-            const char* parserError = rapidjson::GetParseError_En(doc.GetParseError());
+            const char* parserError = rapidjson::GetParseError_En(result.jsonParseResult.Code());
+
             const QString& msg =
-                QString("Failed to parse clipboard text at offset %1: %2").arg(doc.GetErrorOffset()).arg(parserError);
+                QString("Failed to parse clipboard text at offset %1: %2").arg(result.jsonParseResult.Offset()).arg(parserError);
 
             QMessageBox::critical(&self, kWindowTitle, msg,
-                                  QMessageBox::StandardButtons(QMessageBox::StandardButton::Ok),
+                                  QMessageBox::StandardButtons{QMessageBox::StandardButton::Ok},
                                   QMessageBox::StandardButton::Ok);
             return;
         }
-        if (self.m_absFilePath.isEmpty()) {
-            self.m_absFilePath = kClipboardAbsFilePath;
-            openDoc(self, doc, text.length(), kClipboardAbsFilePath);
+        const MainWindowInput& input = MainWindowInput::createClipboard();
+        openComplete(self, result, input);
+    }
+
+    static bool
+    isSignalForThisInstance(std::vector<int>& requestIdVec, const int requestId)
+    {
+        const bool b = Algorithm::Vector::tryErase(requestIdVec, requestId);
+        return b;
+    }
+
+    static void
+    openComplete(MainWindow& self, const MainWindowThreadWorker::OpenResult& result, const MainWindowInput& input)
+    {
+        if (self.m_input.isNone())
+        {
+            openComplete0(self, result, input);
         }
         else {
-            MainWindow* mw =
+            MainWindow* const mw =
                 new MainWindow(
-                    self.m_mainWindowManagerToken.getMainWindowManager(), self.m_formatMap, kClipboardAbsFilePath,
+                    self.m_mainWindowManagerToken->getMainWindowManager(), self.m_formatMap, self.m_threadWorker,
+                    // Intentional: Call ctor with None, then update *after* ctor.  Prevent infinite callback loop!
+                    MainWindowInput::kNone,
                     self.parentWidget(), self.windowFlags());
-            mw->setGeometry(&self);
+
+            // TODO: Does the order of these three methods matter to UX?
+            mw->adjustGeometry(&self);
             mw->show();
+            // Important: Pass '*mw' here, not self!
+            openComplete0(*mw, result, input);
         }
+    }
+
+    static void
+    openComplete0(MainWindow& self, const MainWindowThreadWorker::OpenResult& result, const MainWindowInput& input)
+    {
+        self.m_input = input;
+        self.m_textViewDecorator->setJsonTree(result.jsonTree);
+        applyFormats(self, result.jsonTree);
+        const QStringList& lineList = result.jsonTree->jsonText.split(QRegularExpression{"\\r?\\n"});
+        std::vector<QString> lineVec{lineList.begin(), lineList.end()};
+        self.m_textView->setDoc(std::make_shared<TextViewDocument>(std::move(lineVec)));
+        self.m_textView->setVisible(true);
+        self.m_fileCloseAction->setEnabled(true);
+        self.setWindowTitle(self.m_input.description() + " - " + kWindowTitle);
+        setStatusBarText(self, result.textStats);
+        self.m_mainWindowManagerToken->getMainWindowManager().afterOpenInput(self.m_input);
+    }
+
+    static void
+    applyFormats(MainWindow& self, const std::shared_ptr<JsonTree>& jsonTree)
+    {
+        std::unordered_map<int, TextView::ForegroundFormatSet>& map = self.m_textView->lineIndex_To_ForegroundFormatSet_Map();
+        map.clear();
+
+        for (const JsonTree::JsonNodeLineSegment& s : jsonTree->jsonNodeLineSegmentVec)
+        {
+            TextView::ForegroundFormatSet& set = map[s.lineIndex];
+
+            const std::shared_ptr<PaintForegroundFunctor>& f =
+                Algorithm::Map::getOrAssert(kJsonNodeType_To_PaintFgFunctor, s.jsonNodeType);
+
+            Algorithm::Set::insertNewOrAssert(set, LineFormatForeground{s.seg, f});
+        }
+        // Intentional: Do not call self.m_textView->update() here, as self.m_textView->setDoc() will call it.
+    }
+
+    static void
+    setStatusBarText(MainWindow& self, const TextViewTextStatsService::Result& result)
+    {
+        self.m_statusBarTextViewLabelBaseText =
+            QString("%1 %2 | %3 Unicode %4 | %5 UTF-8 %6")
+                .arg(kLocale.toString(result.lineCount))
+                .arg(1 == result.lineCount ? "line" : "lines")
+                .arg(kLocale.toString(result.graphemeCount))
+                .arg(1 == result.graphemeCount ? "char" : "chars")
+                .arg(kLocale.toString(result.utf8ByteCount))
+                .arg(1 == result.utf8ByteCount ? "byte" : "bytes");
+
+        self.m_statusBar->textViewLabel()->setText(self.m_statusBarTextViewLabelBaseText);
+    }
+
+    static void
+    openInputStream(MainWindow& self, const MainWindowInputStream& inputStream)
+    {
+        if (false == inputStream.isValid())
+        {
+            const QString& text =
+                QString("Failed to open file: %1\n\nError: %2").arg(inputStream.input().description()).arg(inputStream.errorString());
+
+            // TODO: Create dialog with nice view :)
+            QMessageBox::critical(&self, kWindowTitle, text,
+                                  QMessageBox::StandardButtons{QMessageBox::StandardButton::Ok},
+                                  QMessageBox::StandardButton::Ok);
+            return;
+        }
+        const int requestId = self.m_threadWorker->nextRequestId();
+        self.m_textStats.requestIds.slotOpenInputStreamVec.push_back(requestId);
+        assert(QMetaObject::invokeMethod(self.m_threadWorker,
+            // Intentional: Copy 'inputStream'.  Reference is dangerous!
+            [&self, inputStream, requestId]() {
+                // The return signal is connected to 'slotOpenInputStreamComplete(...)'.
+                self.m_threadWorker->slotOpenInputStream(requestId, self.m_textStats.serviceId, inputStream);
+            }));
+    }
+
+    static void
+    slotOpenInputStreamComplete(MainWindow& self, const MainWindowThreadWorker::OpenInputStreamResult& result)
+    {
+        if (false == isSignalForThisInstance(self.m_textStats.requestIds.slotOpenInputStreamVec, result.requestId)) {
+            return;
+        }
+        // TODO: Can we merge this code w/ clipboard?
+        if (result.jsonParseResult.IsError())
+        {
+            // Ref: https://github.com/Tencent/rapidjson/blob/master/example/pretty/pretty.cpp
+            const char* parserError = rapidjson::GetParseError_En(result.jsonParseResult.Code());
+
+            const QString& text =
+                QString("File: %1\nFailed to parse at offset %2: %3")
+                    .arg(result.inputStream.input().description()).arg(result.jsonParseResult.Offset()).arg(parserError);
+
+            QMessageBox::critical(&self, kWindowTitle, text,
+                                  QMessageBox::StandardButtons{QMessageBox::StandardButton::Ok},
+                                  QMessageBox::StandardButton::Ok);
+            return;
+        }
+        const MainWindowInput& input = result.inputStream.input();
+        openComplete(self, result, input);
+        self.m_mainWindowManagerToken->getMainWindowManager().tryAddRecentFileOpen(result.inputStream.input());
     }
 
     static void
@@ -501,7 +484,7 @@ struct MainWindow::Private
         QMessageBox::about(&self, kWindowTitle,
             QString{"<font size='+1'><b>Structured Data Viewer</b></font>"}
             + "<p>"
-            + "A fast, convenient viewer for structured data -- JSON, XML, HTML, etc."
+            + "A viewer for structured data -- JSON, XML, HTML, YAML, etc."
             + "<p>"
             + "Copyright by Kevin Connor ARPE (<a href='mailto:kevinarpe@gmail.com'>kevinarpe@gmail.com</a>)"
             + "<br>License: <a href='https://www.gnu.org/licenses/gpl-3.0.en.html'>https://www.gnu.org/licenses/gpl-3.0.en.html</a>"
@@ -513,50 +496,25 @@ struct MainWindow::Private
 // public static
 const QString MainWindow::kWindowTitle = "Structured Data Viewer";
 
-// private static
-const QString MainWindow::kStdinAbsFilePath = "<stdin>";
-
-// private static
-const QString MainWindow::kClipboardAbsFilePath = "<clipboard>";
-
-// public static
-const MainWindow::Private::Input
-MainWindow::Private::Input::
-kInvalid{
-    .inputStream{},
-    .bufferCapacity = -1,
-    .inputDescription{}
-};
-
-// public static
-const MainWindow::Private::Input
-MainWindow::Private::Input::
-kStdin{
-    .inputStream{shared_ptrs::do_not_delete(&std::cin)},
-    // We have no idea how large is the input.  Use a reasonable default.
-    .bufferCapacity = rapidjson::StringBuffer::kDefaultCapacity,
-    .inputDescription{MainWindow::kStdinAbsFilePath}
-};
-
 // public
 MainWindow::
 MainWindow(MainWindowManager& mainWindowManager,
            const std::unordered_map<JsonNodeType, TextFormat>& formatMap,
-           QString absFilePath /*= QString()*/,
+           MainWindowThreadWorker* threadWorker,
+           const MainWindowInput& input,
            QWidget* parent /*= nullptr*/,
            Qt::WindowFlags flags /*= Qt::WindowFlags()*/)
     : Base{parent, flags},
       m_formatMap{formatMap},
-      m_absFilePath{std::move(absFilePath)},
+      // Intentional: Always start as 'None'.  Only update 'm_input' if 'input' is opened successfully.
+      m_input{MainWindowInput::kNone},
       m_statusBar{new StatusBar{this}},
-//      m_tabWidget{new TabWidget{this}},
-      m_textWidget{new TextWidget{this}},
       m_mainWindowManagerToken{mainWindowManager.add(*this)},
-      m_isClosing{false}
+      m_isClosing{false},
+      m_threadWorker{threadWorker}
 {
     setAttribute(Qt::WidgetAttribute::WA_DeleteOnClose);
     setWindowTitle(kWindowTitle);
-//    setCentralWidget(m_textWidget);
     {
         QWidget* centralWidget = new QWidget{this};
         m_textView = new TextView{centralWidget};
@@ -572,20 +530,12 @@ MainWindow(MainWindowManager& mainWindowManager,
         centralWidget->setLayout(hboxLayout);
         setCentralWidget(centralWidget);
     }
+    m_textStats.service = std::make_shared<TextViewTextStatsService>(m_textView->docViewPtr());
+    m_textStats.serviceId = m_threadWorker->insertNewTextStatsServiceOrAssert(m_textStats.service);
+
     setAcceptDrops(true);
     setStatusBar(m_statusBar);
     m_statusBar->textViewLabel()->setTextFormat(Qt::TextFormat::RichText);
-//
-//    m_tabWidget->addTab(m_textWidget, "Text");
-//    m_tabWidget->addTab(m_treeView, "Tree");
-//    m_tabWidget->setHidden(true);
-//    QObject::connect(m_tabWidget, &TabWidget::currentChanged,
-//                     [this](int tabIndex) { Private::slotTabChanged(*this, tabIndex); });
-//    Private::slotTabChanged(*this, m_tabWidget->currentIndex());
-
-    m_textWidget->setVisible(false);
-    QObject::connect(m_textWidget->plainTextEdit(), &PlainTextEdit::selectionChanged,
-                     [this]() { Private::slotTextSelectionChanged(*this); });
 
     m_textView->setFont(QFont{"Deja Vu Sans Mono", 12});
     // Intentional: Use default from IntelliJ.
@@ -596,16 +546,17 @@ MainWindow(MainWindowManager& mainWindowManager,
     fileMenu->addAction(
         "&Open File...", [this]() { Private::slotOpen(*this); }, QKeySequence::StandardKey::Open);
 
-    fileMenu->addAction("Open from Clipboard", [this]() { Private::slotOpenFromClipboard(*this); });
+    fileMenu->addAction("Open from Clipboard", [this]() { Private::slotOpenClipboardText(*this); });
 
     m_fileOpenRecentMenu = fileMenu->addMenu("Open &Recent");
     QObject::connect(m_fileOpenRecentMenu, &QMenu::triggered,
                      [this](QAction* action) { Private::slotFileOpenRecentMenuTriggered(*this, action); });
     {
         int num = 0;
-        for (const QString& absFilePath : mainWindowManager.fileOpenRecentAbsFilePathVec()) {
+        for (const MainWindowInput& input2 : mainWindowManager.fileOpenRecentVec())
+        {
             ++num;
-            addFileOpenRecent(num, absFilePath);
+            addRecentFileOpen(num, input2);
         }
     }
     m_fileCloseAction =
@@ -615,19 +566,20 @@ MainWindow(MainWindowManager& mainWindowManager,
     fileMenu->addSeparator();
     fileMenu->addAction("E&xit", [this]() { Private::slotExit(*this); }, QKeySequence::StandardKey::Quit);
 
-    QMenu* editMenu = menuBar()->addMenu("&Edit");
-    editMenu->addAction("&Find...", m_textWidget, &TextWidget::slotFind, QKeySequence::StandardKey::Find);
-    editMenu->addAction("&Go To...", m_textWidget, &TextWidget::slotGoTo, QKeySequence{Qt::CTRL + Qt::Key_G});
+    QMenu* const editMenu = menuBar()->addMenu("&Edit");
+    // TODO: Add again later...
+//    editMenu->addAction("&Find...", m_textWidget, &TextWidget::slotFind, QKeySequence::StandardKey::Find);
+//    editMenu->addAction("&Go To...", m_textWidget, &TextWidget::slotGoTo, QKeySequence{Qt::CTRL + Qt::Key_G});
 
     m_windowMenu = menuBar()->addMenu("&Window");
     QObject::connect(m_windowMenu, &QMenu::triggered,
                      [this](QAction* action) { Private::slotWindowMenuTriggered(*this, action); });
 
-    for (const QString& absFilePath2 : mainWindowManager.openAbsFilePathVec()) {
-        addOpenFile(absFilePath2);
+    for (const MainWindowInput& input2 : mainWindowManager.openInputVec())
+    {
+        addOpenInput(input2);
     }
-// Tile!
-// Tiny icons to represent size & location: max, 1/2, 1/4, 1/9
+    // TODO: Window->Tile: Tiny icons to represent size & location: max, 1/2, 1/4, 1/9
 
     QMenu* helpMenu = menuBar()->addMenu("&Help");
     helpMenu->addAction("&About", [this]() { Private::slotAbout(*this); });
@@ -636,21 +588,50 @@ MainWindow(MainWindowManager& mainWindowManager,
 //    // Ref: https://code.qt.io/cgit/qt/qtbase.git/tree/examples/widgets/mainwindows/application/mainwindow.cpp?h=5.14
 //    setUnifiedTitleAndToolBarOnMac(true);
 
-    if ( ! m_absFilePath.isEmpty()) {
-        if (kClipboardAbsFilePath == m_absFilePath) {
-            m_absFilePath.clear();
-            Private::slotOpenFromClipboard(*this);
-        }
-        else {
-            Private::openFile(*this);
-        }
+    QObject::connect(m_threadWorker, &MainWindowThreadWorker::signalOpenInputStreamComplete,
+                     // Important: Provide context QObject so the connection type will be queued (thread-safe).
+                     this,
+                     [this](const MainWindowThreadWorker::OpenInputStreamResult& result)
+                     {
+                         Private::slotOpenInputStreamComplete(*this, result);
+                     });
+
+    QObject::connect(m_threadWorker, &MainWindowThreadWorker::signalOpenClipboardTextComplete,
+                     // Important: Provide context QObject so the connection type will be queued (thread-safe).
+                     this,
+                     [this](const MainWindowThreadWorker::OpenClipboardTextResult& result)
+                     {
+                         Private::slotOpenClipboardTextComplete(*this, result);
+                     });
+
+    QObject::connect(m_textView, &TextView::signalSelectedTextChanged, [this]() { Private::slotSelectedTextChanged(*this); });
+
+    QObject::connect(m_threadWorker, &MainWindowThreadWorker::signalCalcTextSelectionStatsComplete,
+                     // Important: Provide context QObject so the connection type will be queued (thread-safe).
+                     this,
+                     [this](const MainWindowThreadWorker::CalcTextSelectionStatsResult& result)
+                     {
+                         Private::slotCalcTextSelectionStatsComplete(*this, result);
+                     });
+
+    Private::openInput(*this, input);
+}
+
+// public
+MainWindow::
+~MainWindow()  // override
+{
+    m_threadWorker->eraseTextStatsServiceOrAssert(m_textStats.serviceId);
+    for (const QMetaObject::Connection& c : m_qObjectConnectionVec)
+    {
+        QObject::disconnect(c);
     }
 }
 
 // public
 void
 MainWindow::
-setGeometry(MainWindow* other /*= nullptr*/)
+adjustGeometry(MainWindow* other /*= nullptr*/)
 {
     const QList<QScreen*> screenList = QGuiApplication::screens();
     if (nullptr == other) {
@@ -676,44 +657,56 @@ setGeometry(MainWindow* other /*= nullptr*/)
 // public
 void
 MainWindow::
-addFileOpenRecent(const int number, const QString& absFilePath)
+addRecentFileOpen(const int number, const MainWindowInput& input)
 {
-    const QString text = ((number <= 9) ? "&" : "") + QString("%1: " + absFilePath).arg(number);
-    QAction* action = m_fileOpenRecentMenu->addAction(text);
-    action->setData(absFilePath);
+    assert(number >= 1);
+    assert(input.isFile());
+    // Ex: "&3: /path/to/file"
+    // Ex: "12: <clipboard>:7"
+    const QString text =
+        // Only shortcuts 1...9 make sense!
+        ((number <= 9) ? "&" : "")
+        + QString::number(number) + ": " + input.description();
+
+    QAction* const action = m_fileOpenRecentMenu->addAction(text);
+    Algorithm::Map::insertNewOrAssert(m_windowMenuAction_To_Input_Map, action, input);
+
+    const QMetaObject::Connection& c =
+        QObject::connect(action, &QObject::destroyed,
+                         [this, action](QObject*) { Algorithm::Map::tryEraseByKey(m_windowMenuAction_To_Input_Map, action); });
+    m_qObjectConnectionVec.emplace_back(c);
 }
 
 // public
 void
 MainWindow::
-addOpenFile(const QString& absFilePath)
+addOpenInput(const MainWindowInput& input)
 {
-    QAction* action = m_windowMenu->addAction(absFilePath);
-    if (absFilePath == m_absFilePath) {
+    const QString& desc = input.description();
+    QAction* const action = m_windowMenu->addAction(desc);
+    if (input == m_input)
+    {
         action->setCheckable(true);
         action->setChecked(true);
     }
-    action->setData(absFilePath);
+    Algorithm::Map::insertNewOrAssert(m_windowMenuAction_To_Input_Map, action, input);
+
+    const QMetaObject::Connection& c =
+        QObject::connect(action, &QObject::destroyed,
+                         [this, action](QObject*) { Algorithm::Map::tryEraseByKey(m_windowMenuAction_To_Input_Map, action); });
+    m_qObjectConnectionVec.emplace_back(c);
 }
 
 // public
 void
 MainWindow::
-removeOpenFile(const QString& absFilePath)
+removeOpenInput(const MainWindowInput& input)
 {
-    for (QAction* action : m_windowMenu->actions()) {
-        const QVariant& data = action->data();
-        if (QVariant::Type::String != data.type()) {
-            continue;
-        }
-        // Ex: "/home/kca/saveme/qt5/structured-data-viewer/cmake-build-debug/data/twitter.json"
-        const QString& absFilePath2 = data.toString();
-        if (absFilePath2 == absFilePath) {
-            m_windowMenu->removeAction(action);
-            return;
-        }
-    }
-    assert(false);
+    auto iter = Algorithm::Map::findByValueOrAssert(m_windowMenuAction_To_Input_Map, input);
+    QAction* const action = iter->first;
+    m_windowMenu->removeAction(action);
+    // This will trigger signal QObject::destroyed, which will remove 'action' from 'm_windowMenuAction_To_Input_Map'.
+    delete action;
 }
 
 /**
@@ -725,7 +718,8 @@ void
 MainWindow::
 closeEvent(QCloseEvent* event)
 {
-    if (m_isClosing || Private::shallClose(*this)) {
+    if (m_isClosing || Private::shallClose(*this))
+    {
         QWidget::closeEvent(event);
     }
     else {
@@ -740,9 +734,10 @@ dragEnterEvent(QDragEnterEvent* event)  // override
 {
     qDebug() << "dragEnterEvent(): " << event->mimeData()->formats() << "[" << event->mimeData()->text() << "]";
 
-    // dragEnterEvent():  ("text/uri-list", "text/plain", "application/x-kde4-urilist")
+    // dragEnterEvent():  ["text/uri-list", "text/plain", "application/x-kde4-urilist"]
     // Ex: "file:///home/kca/saveme/qt5/structured-data-viewer/data/string.json"
-    if (event->mimeData()->hasUrls()) {
+    if (event->mimeData()->hasUrls())
+    {
         event->acceptProposedAction();
     }
 }
@@ -755,22 +750,27 @@ dropEvent(QDropEvent* event)  // override
     // Ref: https://wiki.qt.io/Drag_and_Drop_of_files
     assert(event->mimeData()->hasUrls());
     qDebug() << "dropEvent(): " << event->mimeData()->formats();
+
     QList<QUrl> urlList = event->mimeData()->urls();
     QStringList absFilePathList{};
     const int count = urlList.size();
     // Prevent "bombing" with thousands of files
     const int maxOpenCount = 32;
-    for (int i = 0; i < count && absFilePathList.size() < maxOpenCount; ++i) {
+    for (int i = 0; i < count && absFilePathList.size() < maxOpenCount; ++i)
+    {
         const QUrl& url = urlList[i];
-        if (url.isLocalFile()) {
+        if (url.isLocalFile())
+        {
             const QString& absDirOrFilePath = url.toLocalFile();
             QFileInfo fi{absDirOrFilePath};
-            if (fi.exists() && fi.isFile()) {
+            if (fi.exists() && fi.isFile())
+            {
                 absFilePathList.append(absDirOrFilePath);
             }
         }
     }
-    if ( ! absFilePathList.isEmpty()) {
+    if (false == absFilePathList.isEmpty())
+    {
         Private::openFilePathList(*this, absFilePathList);
     }
     // TODO: Warn user if some skipped due to "bombing" or not local file or does not exist or is not a regular file?
