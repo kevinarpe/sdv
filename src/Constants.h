@@ -51,6 +51,13 @@ struct Constants
         static const QString kArrayBegin;   // {QLatin1Char{'['}
         static const QString kArrayEnd;     // {QLatin1Char{']'}
     };
+
+    // Ref: https://specifications.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html#names
+    struct IconThemeName
+    {
+        static const QString kEditCopy;       // {QLatin1String{"edit-copy"}}
+        static const QString kEditSelectAll;  // {QLatin1String{"edit-select-all"}}
+    };
 };
 
 }  // namespace SDV

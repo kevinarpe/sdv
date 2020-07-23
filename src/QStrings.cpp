@@ -11,16 +11,18 @@ int
 QStrings::
 utf8ByteCount(const QString& s, const int offset, const int length)
 {
-    const int codePointCount = s.size();
-    assert(offset >= 0 && (offset + length) <= codePointCount);
+    const int size = s.size();
+    assert(offset >= 0 && (offset + length) <= size);
 
     const QChar* data = s.constData();
+    data += offset;
     int byteCount = 0;
 
-    for (int i = 0; i < codePointCount; ++i, ++data)
+    for (int i = offset; i < offset + length; ++i)
     {
         ++byteCount;
-        if (data->unicode() > 0xff) {
+        const QChar& ch = data[i];
+        if (ch.unicode() > 0xff) {
             ++byteCount;
         }
     }

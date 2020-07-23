@@ -16,6 +16,7 @@
 #include "PaintBackgroundFunctor.h"
 #include "PaintForegroundFunctor.h"
 #include "TextViewGraphemePosition.h"
+class QMenu;
 
 namespace SDV {
 
@@ -192,11 +193,23 @@ public:
      */
     QString selectedText() const;
 
+    /** Use this method to create actions for main window menu items. */
+    QAction* createCopyAction(QObject* parent = nullptr);
+
+    /** Use this method to create actions for main window menu items. */
+    QAction* createSelectAllAction(QObject* parent = nullptr);
+
+    /** Use this method to create actions for main window menu items. */
+    QAction* createDeselectAction(QObject* parent = nullptr);
+
 public slots:
     /**
-     * Calls {@link #selectedText()}.  If not empty, then put text on clipboard.
+     * Calls {@link #selectedText()}.  If not empty, then copy text to clipboard.
      */
     void slotCopySelectedTextToClipboard(QClipboard::Mode mode = QClipboard::Mode::Clipboard) const;
+
+    void slotSelectAll();
+    void slotDeselect();
 
 signals:
     /**
@@ -210,6 +223,8 @@ protected:
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
+    virtual QMenu* createContextMenu(const QPoint& pos);
 
 private:
     struct Private;

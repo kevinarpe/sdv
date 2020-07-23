@@ -10,6 +10,7 @@
 #include <QGuiApplication>
 #include <QClipboard>
 #include <QShortcut>
+#include <QMenu>
 #include <algorithm>
 #include <cmath>
 #include "TextViewDocument.h"
@@ -142,6 +143,80 @@ struct TextView::Private
         const QPixmap p = self.m_textCursor->isVisible() ? self.m_textCursorPixmapVisible : self.m_textCursorPixmapInvisible;
         painter.drawPixmap(self.m_textCursorRectF, p, self.m_textCursorPixmapRectF);
         self.m_textCursor->afterPaintEvent();
+    }
+
+    static QAction*
+    createCopyAction(const TextView& self, QObject* parent)
+    {
+        const QIcon& icon = QIcon::fromTheme(Constants::IconThemeName::kEditCopy);
+        // @Debug
+        const bool n = icon.isNull();
+        QAction* const action = new QAction{icon, "&Copy", parent};
+        action->setShortcuts(QKeySequence::StandardKey::Copy);
+        slotActionSetEnabledWhenSelectionIsValid(self, action);
+        QObject::connect(action, &QAction::triggered, [&self](){ self.slotCopySelectedTextToClipboard(); });
+        QObject::connect(&self, &TextView::signalSelectedTextChanged,
+                         // Intentional: Must include QObject receiver/context to auto-disconnect on delete/destruct.
+                         action,
+                         [&self, action]() {
+                             Private::slotActionSetEnabledWhenSelectionIsValid(self, action);
+                         });
+        return action;
+    }
+
+    static void
+    slotActionSetEnabledWhenSelectionIsValid(const TextView& self, QAction* const action)
+    {
+        const TextViewSelection& selection = self.m_textCursor->selection();
+        action->setEnabled(selection.isValid());
+    }
+
+    static QAction*
+    createSelectAllAction(TextView& self, QObject* parent)
+    {
+        const QIcon& icon = QIcon::fromTheme(Constants::IconThemeName::kEditSelectAll);
+        // @Debug
+        const bool n = icon.isNull();
+        QAction* const action = new QAction{icon, "Select &All", parent};
+        action->setShortcuts(QKeySequence::StandardKey::SelectAll);
+        QObject::connect(action, &QAction::triggered, [&self](){ self.slotSelectAll(); });
+        return action;
+    }
+
+    static QAction*
+    createDeselectAction(TextView& self, QObject* parent)
+    {
+        QIcon icon{};
+        QAction* const action = new QAction{icon, "&Deselect", parent};
+        action->setShortcuts(QKeySequence::StandardKey::Deselect);
+        slotActionSetEnabledWhenSelectionIsValid(self, action);
+        QObject::connect(action, &QAction::triggered, [&self](){ self.slotDeselect(); });
+        QObject::connect(&self, &TextView::signalSelectedTextChanged,
+                         // Intentional: Must include QObject receiver/context to auto-disconnect on delete/destruct.
+                         action,
+                         [&self, action]() {
+                             Private::slotActionSetEnabledWhenSelectionIsValid(self, action);
+                         });
+        return action;
+    }
+
+    static QPoint
+    getContextMenuEventPos(const TextView& self, QContextMenuEvent* event)
+    {
+        const QContextMenuEvent::Reason reason = event->reason();
+        switch (reason)
+        {
+            case QContextMenuEvent::Reason::Keyboard:
+            {
+                const QPoint& x = self.m_textCursorRect.bottomRight();
+                return x;
+            }
+            default:
+            {
+                const QPoint& x = event->pos();
+                return x;
+            }
+        }
     }
 };
 
@@ -394,6 +469,39 @@ const
     return x;
 }
 
+// public
+QAction*
+TextView::
+createCopyAction(QObject* parent /*= nullptr*/)
+{
+    QAction* const action = Private::createCopyAction(*this, parent);
+    QObject::connect(this, &TextView::signalSelectedTextChanged,
+                     action,
+                     [this, action]() { Private::slotActionSetEnabledWhenSelectionIsValid(*this, action); });
+    return action;
+}
+
+// public
+QAction*
+TextView::
+createSelectAllAction(QObject* parent /*= nullptr*/)
+{
+    QAction* const action = Private::createSelectAllAction(*this, parent);
+    return action;
+}
+
+// public
+QAction*
+TextView::
+createDeselectAction(QObject* parent /*= nullptr*/)
+{
+    QAction* const action = Private::createDeselectAction(*this, parent);
+    QObject::connect(this, &TextView::signalSelectedTextChanged,
+                     action,
+                     [this, action]() { Private::slotActionSetEnabledWhenSelectionIsValid(*this, action); });
+    return action;
+}
+
 // public slot
 void
 TextView::
@@ -406,6 +514,22 @@ const
     }
     QClipboard* const clipboard = QGuiApplication::clipboard();
     clipboard->setText(text, mode);
+}
+
+// public slot
+void
+TextView::
+slotSelectAll()
+{
+    m_textCursor->slotSelectAll();
+}
+
+// public slot
+void
+TextView::
+slotDeselect()
+{
+    m_textCursor->slotDeselect();
 }
 
 // protected
@@ -714,6 +838,35 @@ keyPressEvent(QKeyEvent* event)  // override
     else {
         Base::keyPressEvent(event);
     }
+}
+
+// protected
+void
+TextView::
+contextMenuEvent(QContextMenuEvent* event)  // override
+{
+    const QPoint& pos = Private::getContextMenuEventPos(*this, event);
+    QMenu* const menu = createContextMenu(pos);
+    const QPoint& globalPos = viewport()->mapToGlobal(pos);
+    // @Blocking
+    menu->exec(globalPos);
+    delete menu;
+}
+
+// protected virtual
+QMenu*
+TextView::
+createContextMenu(const QPoint& pos)
+{
+    QMenu* const menu = new QMenu{this};
+    QAction* const copyAction = Private::createCopyAction(*this, menu);
+    menu->addAction(copyAction);
+    menu->addSeparator();
+    QAction* const selectAllAction = Private::createSelectAllAction(*this, menu);
+    menu->addAction(selectAllAction);
+    QAction* const deselectAction = Private::createDeselectAction(*this, menu);
+    menu->addAction(deselectAction);
+    return menu;
 }
 
 }  // namespace SDV

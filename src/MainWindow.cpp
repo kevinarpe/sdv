@@ -205,7 +205,7 @@ struct MainWindow::Private
         }
         const QString& x =
             self.m_statusBarTextViewLabelBaseText
-            + QString{" || <b><u>Selection</u></b>: %1 %2 | %3 Unicode %4 | %5 UTF-8 %6"}
+            + QString{" | <b><u>Selection:</u></b> %1 %2, %3 Unicode %4, %5 UTF-8 %6"}
                 .arg(kLocale.toString(result.textStats.lineCount))
                 .arg(1 == result.textStats.lineCount ? "line" : "lines")
                 .arg(kLocale.toString(result.textStats.graphemeCount))
@@ -417,7 +417,7 @@ struct MainWindow::Private
     setStatusBarText(MainWindow& self, const TextViewTextStatsService::Result& result)
     {
         self.m_statusBarTextViewLabelBaseText =
-            QString("%1 %2 | %3 Unicode %4 | %5 UTF-8 %6")
+            QString("%1 %2, %3 Unicode %4, %5 UTF-8 %6")
                 .arg(kLocale.toString(result.lineCount))
                 .arg(1 == result.lineCount ? "line" : "lines")
                 .arg(kLocale.toString(result.graphemeCount))

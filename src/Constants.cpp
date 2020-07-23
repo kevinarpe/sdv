@@ -52,4 +52,10 @@ const QString Constants::Json::kArrayBegin{QLatin1Char{'['}};
 // public static
 const QString Constants::Json::kArrayEnd{QLatin1Char{']'}};
 
+// public static
+const QString Constants::IconThemeName::kEditCopy{QLatin1String{"edit-copy"}};
+
+// public static
+const QString Constants::IconThemeName::kEditSelectAll{QLatin1String{"edit-select-all"}};
+
 }  // namespace SDV

@@ -80,6 +80,9 @@ public slots:
      */
     void slotSetBlinkMillis(int millis);
 
+    void slotSelectAll();
+    void slotDeselect();
+
 signals:
     // Only enable if we need later.
 //    void signalPositionChanged();

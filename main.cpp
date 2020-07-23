@@ -1,8 +1,6 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QTextStream>
-#include <QFile>
-#include <QMainWindow>
 #include <QFileInfo>
 #include <QDebug>
 #include <unistd.h>
@@ -39,7 +37,6 @@
  * FindWidget: Add support for JSON Path
  * Character inspector: Once enable mouse over a char to view Unicode details
  * QWindow::setIcon(const QIcon &icon)
- * Add license (GPL3+)
  * Add to GitHub account
  * Need to check TreeView's handling of very long lines... do we need word-wrap?
  * Can we allow // and / ** / comments in the JSON?  See: rapidjson::ParseFlag::kParseCommentsFlag
@@ -47,13 +44,13 @@
  * -> Useful in *both* text and tree views... and even "selectable" in text view is still useful.
  * Can we create a "cram-down" view?  "a":{\n\t...\n\t"b":{\n\t\t...\n\t\t"c":{\n\t\t\t...\n\t\t\t"key": 123
  * -> Again, a checkbox could be used to quickly toggle between full and cram-down visual modes.
- * The TreeView is horribly slow.  We need to add +/- icons in the gutter.
- * -> All the "tree" work is not a loss.  Why?  We will need it to correctly impl +/- icons in the gutter.
  * Add nice shortcut keys help panel.  (Right side?)  Printable as PDF?
  * Character inspection mode: Character under cursor has balloon pop-up to share Unicode details.
  * Status bar: Add current line number and grapheme number and selection info
  * Like IntelliJ, (Shift+)Ctrl+W will (de)select by scope -- wider and wider.
  * Ctrl+MouseWheel should adjust font size.
+ * Right click any JSON node: Close all branches to parent.
+ * Add text cursor location (line number and column number) to the status bar
  *
  * x Input?  x Clipboard, x file, x drag-n-drop
  * x Multiple tabs->windows for multiple inputs
@@ -73,6 +70,7 @@
  * x Selected text should have range and count of lines & char count displayed in status bar
  * x After closing document, clear the status bar.
  * x Double check if all QObject/QWidget sub-classes have *at least*: ~$class() override = default;
+ * x Add license (GPL3+)
  */
 
 std::unordered_map<SDV::JsonNodeType, SDV::TextFormat>

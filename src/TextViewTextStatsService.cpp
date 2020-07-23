@@ -87,10 +87,10 @@ struct TextViewTextStatsService::Private
             self.m_textBoundaryFinder.reset(QTextBoundaryFinder::BoundaryType::Grapheme, line);
 
             result.graphemeCount =
-                self.m_textBoundaryFinder.countRange(begin.charIndex, end.charIndex - begin.charIndex + 1);
+                self.m_textBoundaryFinder.countRange(begin.charIndex, end.charIndex - begin.charIndex);
 
             result.utf8ByteCount =
-                QStrings::utf8ByteCount(line, begin.charIndex, end.charIndex - begin.charIndex + 1);
+                QStrings::utf8ByteCount(line, begin.charIndex, end.charIndex - begin.charIndex);
         }
         return result;
     }

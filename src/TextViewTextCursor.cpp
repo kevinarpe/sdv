@@ -635,7 +635,7 @@ struct TextViewTextCursor::Private
                 const QString& lastVisibleLine = lineVec[lastVisibleLineIndex];
                 if (lastVisibleLine.isEmpty())
                 {
-                    self.m_selection.begin = TextViewPosition{.lineIndex = lastVisibleLineIndex, .charIndex = 0};
+                    self.m_selection.end = TextViewPosition{.lineIndex = lastVisibleLineIndex, .charIndex = 0};
                 }
                 else {
                     QTextBoundaryFinder f{QTextBoundaryFinder::BoundaryType::Grapheme, lastVisibleLine};
@@ -643,7 +643,7 @@ struct TextViewTextCursor::Private
                     while (-1 != f.toNextBoundary()) {
                         ++graphemeIndex;
                     }
-                    self.m_selection.begin =
+                    self.m_selection.end =
                         TextViewPosition{.lineIndex = lastVisibleLineIndex, .charIndex = lastVisibleLine.length()};
                 }
             }
@@ -865,6 +865,7 @@ struct TextViewTextCursor::Private
     static void
     mouseButtonPressOrMoveEvent(TextViewTextCursor& self, QMouseEvent* event)
     {
+        const TextViewSelection origSelection = self.m_selection;
         // event->button(): "Note that the returned value is always Qt::NoButton for mouse move events."
         const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
         const int lineIndex = self.m_textView.lineIndexForHeight(event->pos().y());
@@ -914,6 +915,10 @@ struct TextViewTextCursor::Private
         horizontalScrollToEnsureVisible(self, fontWidth);
         verticalScrollToEnsureVisible(self);
         updateAfterMove(self, origPos);
+        if (false == self.m_selection.isEqual(origSelection))
+        {
+            emit self.m_textView.signalSelectedTextChanged();
+        }
     }
 };
 
@@ -1054,6 +1059,22 @@ slotSetBlinkMillis(const int millis)
             Private::tryStartTimer(*this);
         }
     }
+}
+
+// public slot
+void
+TextViewTextCursor::
+slotSelectAll()
+{
+    Private::selectAll(*this);
+}
+
+// public slot
+void
+TextViewTextCursor::
+slotDeselect()
+{
+    Private::deselect(*this);
 }
 
 // protected
