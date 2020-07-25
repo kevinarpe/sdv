@@ -27,6 +27,7 @@
 #include "Algorithm.h"
 #include "TextFormat.h"
 #include "Constants.h"
+#include "JsonTreeResult.h"
 
 #ifdef __GNUC__
 RAPIDJSON_DIAG_PUSH
@@ -70,23 +71,28 @@ public:
         Base(os), indentChar_(' '), indentCharCount_(4), formatOptions_(rapidjson::kFormatDefault),
         m_formatMap{formatMap}, m_lastBufferSize{0}
     {
-        m_result = std::make_shared<JsonTree>();
-        m_result->jsonText.reserve(static_cast<int>(bufferCapacity));
+        m_result = std::make_unique<JsonTreeResult>();
     }
 //
 //    explicit PrettyWriter2(StackAllocator* allocator = 0, size_t levelDepth = Base::kDefaultLevelDepth) :
 //        Base(allocator, levelDepth), indentChar_(' '), indentCharCount_(4) {}
 
-    const std::shared_ptr<JsonTree>&
-    result() const
+    std::unique_ptr<JsonTreeResult>
+    result()
     {
-        assert(nullptr != m_result->rootNode);
+        assert(nullptr != m_result.get());
+        assert(nullptr != m_result->jsonTree->rootNode);
         assert(m_parentNodeVec.empty());
+        assert(m_currentLine.isEmpty() == false);
         internedTextSet.clear();
-//        m_result->jsonTextLineVec.shrink_to_fit();
-        m_result->lineIndex_To_NodeVec.shrink_to_fit();
-        m_result->jsonNodeLineSegmentVec.shrink_to_fit();
-        return m_result;
+
+        m_result->jsonTextLineVec.push_back(m_currentLine);
+        m_currentLine.clear();
+
+        m_result->jsonTextLineVec.shrink_to_fit();
+        m_result->jsonTree->lineIndex_To_NodeVec.shrink_to_fit();
+        // Intentional: std::move() is required with std::unique_ptr.
+        return std::move(m_result);
     }
 
     //! Set custom indentation.
@@ -374,10 +380,13 @@ private:
         const size_t bufferSize = Base::os_->GetSize();
         const typename TargetEncoding::Ch* str = Base::os_->GetString();
         const QString& token = QString::fromUtf8(str + m_lastBufferSize, bufferSize - m_lastBufferSize);
-        m_result->jsonText.append(token);
         m_lastBufferSize = bufferSize;
         const int indexOfNewLine = token.indexOf(QLatin1Char{'\n'});
-        if (indexOfNewLine >= 0) {
+        if (indexOfNewLine >= 0)
+        {
+            m_currentLine += token.left(indexOfNewLine);
+            m_result->jsonTextLineVec.push_back(m_currentLine);
+
             m_currentLine = token.mid(1 + indexOfNewLine);
             ++m_lineIndex;
         }
@@ -393,8 +402,8 @@ private:
 
     std::vector<JsonNode*> m_parentNodeVec;
     int m_lineIndex = 0;
-    std::shared_ptr<JsonTree> m_result;
-    mutable std::unordered_set<QString> internedTextSet;
+    std::unique_ptr<JsonTreeResult> m_result;
+    std::unordered_set<QString> internedTextSet;
 
     /**
      * @param memberCount
@@ -415,40 +424,27 @@ private:
             case JsonNodeType::Bool:
             case JsonNodeType::Number:
             case JsonNodeType::String: {
-                if (nullptr != m_result->rootNode) {
+                if (nullptr != m_result->jsonTree->rootNode)
+                {
                     JsonNode* const parent = m_parentNodeVec.back();
-                    if (JsonNodeType::Key == parent->type()) {
+                    if (JsonNodeType::Key == parent->type())
+                    {
                         m_parentNodeVec.pop_back();
                     }
                     child = newJsonNode_(parent, jsonNodeType, text);
                 }
                 else {
                     child = newJsonNode_(nullptr, jsonNodeType, text);
-                    m_result->rootNode.reset(child);
+                    m_result->jsonTree->rootNode.reset(child);
                 }
                 assert(m_formatMap.end() != iter);
                 const TextFormat& format = iter->second;
-                m_result->formatRangeVec.append(
-                    QTextLayout::FormatRange{
-                        .start = m_result->jsonText.length() - text.length(),
-                        .length = text.length(),
-                        .format = format.textCharFormat
-                    });
-                m_result->jsonNodeLineSegmentVec.push_back(
-                    JsonTree::JsonNodeLineSegment{
-                        .jsonNodeType = jsonNodeType,
-                        .lineIndex = m_lineIndex,
-                        .seg = LineSegment{
-                                   .charIndex = m_currentLine.length() - text.length(),
-                                   .length = text.length()
-                               }
-                    });
                 pos.charIndex = m_currentLine.length() - text.length();
                 break;
             }
             case JsonNodeType::Key:
             {
-                assert(nullptr != m_result->rootNode);
+                assert(nullptr != m_result->jsonTree->rootNode);
                 JsonNode* const parent = m_parentNodeVec.back();
                 assert(JsonNodeType::ObjectBegin == parent->type());
                 child = newJsonNode_(parent, jsonNodeType, text);
@@ -456,30 +452,16 @@ private:
 
                 assert(m_formatMap.end() != iter);
                 const TextFormat& format = iter->second;
-                m_result->formatRangeVec.append(
-                    QTextLayout::FormatRange{
-                        .start = m_result->jsonText.length() - text.length(),
-                        .length = text.length(),
-                        .format = format.textCharFormat
-                    });
-                m_result->jsonNodeLineSegmentVec.push_back(
-                    JsonTree::JsonNodeLineSegment{
-                        .jsonNodeType = jsonNodeType,
-                        .lineIndex = m_lineIndex,
-                        .seg = LineSegment{
-                                   .charIndex = m_currentLine.length() - text.length(),
-                                   .length = text.length()
-                               }
-                    });
                 pos.charIndex = m_currentLine.length() - text.length();
                 break;
             }
             case JsonNodeType::ObjectBegin:
             {
                 assert(m_formatMap.end() == iter);
-                if (nullptr != m_result->rootNode) {
+                if (nullptr != m_result->jsonTree->rootNode) {
                     JsonNode* const parent = m_parentNodeVec.back();
-                    if (JsonNodeType::Key == parent->type()) {
+                    if (JsonNodeType::Key == parent->type())
+                    {
                         m_parentNodeVec.pop_back();
                     }
                     child = new JsonNode{parent, jsonNodeType, Constants::Json::kObjectBegin};
@@ -487,7 +469,7 @@ private:
                 }
                 else {
                     child = new JsonNode{nullptr, jsonNodeType, Constants::Json::kObjectBegin};
-                    m_result->rootNode.reset(child);
+                    m_result->jsonTree->rootNode.reset(child);
                     m_parentNodeVec.push_back(child);
                 }
                 assert(QLatin1Char{'{'} == m_currentLine[m_currentLine.length() - 1]);
@@ -497,9 +479,10 @@ private:
             case JsonNodeType::ArrayBegin:
             {
                 assert(m_formatMap.end() == iter);
-                if (nullptr != m_result->rootNode) {
+                if (nullptr != m_result->jsonTree->rootNode) {
                     JsonNode* const parent = m_parentNodeVec.back();
-                    if (JsonNodeType::Key == parent->type()) {
+                    if (JsonNodeType::Key == parent->type())
+                    {
                         m_parentNodeVec.pop_back();
                     }
                     child = new JsonNode{parent, jsonNodeType, Constants::Json::kArrayBegin};
@@ -507,7 +490,7 @@ private:
                 }
                 else {
                     child = new JsonNode{nullptr, jsonNodeType, Constants::Json::kArrayBegin};
-                    m_result->rootNode.reset(child);
+                    m_result->jsonTree->rootNode.reset(child);
                     m_parentNodeVec.push_back(child);
                 }
                 assert(QLatin1Char{'['} == m_currentLine[m_currentLine.length() - 1]);
@@ -517,7 +500,7 @@ private:
             case JsonNodeType::ObjectEnd:
             {
                 assert(m_formatMap.end() == iter);
-                assert(nullptr != m_result->rootNode);
+                assert(nullptr != m_result->jsonTree->rootNode);
                 JsonNode* const parent = m_parentNodeVec.back();
                 assert(JsonNodeType::ObjectBegin == parent->type());
                 m_parentNodeVec.pop_back();
@@ -531,7 +514,7 @@ private:
             case JsonNodeType::ArrayEnd:
             {
                 assert(m_formatMap.end() == iter);
-                assert(nullptr != m_result->rootNode);
+                assert(nullptr != m_result->jsonTree->rootNode);
                 JsonNode* const parent = m_parentNodeVec.back();
                 assert(JsonNodeType::ArrayBegin == parent->type());
                 m_parentNodeVec.pop_back();
@@ -545,19 +528,19 @@ private:
             default:
                 assert(false);
         }
-        if (m_lineIndex == m_result->lineIndex_To_NodeVec.size())
+        if (m_lineIndex == m_result->jsonTree->lineIndex_To_NodeVec.size())
         {
             std::vector<JsonNode*> nodeVec{};
             // Intentional: Very conservative
             nodeVec.shrink_to_fit();
-            m_result->lineIndex_To_NodeVec.push_back(nodeVec);
+            m_result->jsonTree->lineIndex_To_NodeVec.push_back(nodeVec);
         }
         if (nullptr != child)
         {
-            assert(false == m_result->nodeToPosMap.contains(child));
-            Algorithm::Map::insertNewOrAssert(m_result->nodeToPosMap, child, pos);
+            assert(false == m_result->jsonTree->nodeToPosMap.contains(child));
+            Algorithm::Map::insertNewOrAssert(m_result->jsonTree->nodeToPosMap, child, pos);
 
-            std::vector<JsonNode*>& nodeVec = m_result->lineIndex_To_NodeVec.back();
+            std::vector<JsonNode*>& nodeVec = m_result->jsonTree->lineIndex_To_NodeVec.back();
             nodeVec.reserve(nodeVec.size() + 1);
             nodeVec.push_back(child);
         }

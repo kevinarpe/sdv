@@ -439,8 +439,9 @@ const
     const TextViewDocumentView::const_iterator iter0 = m_docView->findOrAssert(begin.lineIndex);
     const std::vector<QString>& lineVec = m_docView->doc().lineVec();
 
-    QString x{};
     const int charCount = staticSelectedTextCharCount(begin, end, lineVec, iter0);
+
+    QString x{};
     x.reserve(charCount);
 
     for (TextViewDocumentView::const_iterator iter = iter0

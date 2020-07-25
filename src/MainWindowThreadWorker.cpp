@@ -49,12 +49,11 @@ struct MainWindowThreadWorker::Private
         rapidjson::StringBuffer sb{nullptr, static_cast<size_t>(utf8BufferCapacity)};
         PrettyWriter2 pw{sb, static_cast<std::size_t>(utf8BufferCapacity), self.m_formatMap};
         assert(doc.Accept(pw));
-        result->jsonTree = pw.result();
-
-        // TODO: Can this very wasteful split be avoided within PrettyWriter2?
-        const QStringList& lineList = result->jsonTree->jsonText.split(QRegularExpression{"\\r?\\n"});
-        std::vector<QString> lineVec{lineList.begin(), lineList.end()};
-        result->doc = std::make_shared<TextViewDocument>(std::move(lineVec));
+        // Intentional: std::move() is required with std::unique_ptr.
+        std::unique_ptr<JsonTreeResult> jsonTreeResult = std::move(pw.result());
+        result->jsonTree = jsonTreeResult->jsonTree;
+        // Intentional: Use std::move() on jsonTreeResult->jsonTextLineVec b/c jsonTreeResult is destroyed at end of this scope.
+        result->doc = std::make_shared<TextViewDocument>(std::move(jsonTreeResult->jsonTextLineVec));
 
         const std::shared_ptr<TextViewTextStatsService>& tss = self.m_textViewTextStatsServiceMap.getOrAssert(textStatsServiceId);
         result->textStats = tss->setDoc(result->doc);

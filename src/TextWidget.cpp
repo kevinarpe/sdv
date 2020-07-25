@@ -430,30 +430,30 @@ setResult(const JsonTree& result)
     assert(m_plainTextLength < 0);
     m_plainTextLength = result.jsonText.length();
     m_plainTextEdit->setResult(result);
-    QTextDocument* const doc = m_plainTextEdit->document();
-    const int formatRangeCount = result.formatRangeVec.size();
-    // Two is the maximum number of expected formats in a single line.  When/Why?  A key-value pair.
-    for (int i = 0; i < formatRangeCount; i += 0) {
-        const QTextLayout::FormatRange& formatRange0 = result.formatRangeVec[i];
-        const QTextBlock& textBlock = doc->findBlock(formatRange0.start);
-        assert(textBlock.isValid());
-        const int position = textBlock.position();
-        const int length = textBlock.length();
-        QTextLayout* const textLayout = textBlock.layout();
-        // Always empty, but remember QVector uses implicit sharing.
-        QVector<QTextLayout::FormatRange> textBlockFormatRangeVec = textLayout->formats();
-        for (int j = i; j < formatRangeCount; ++j) {
-            const QTextLayout::FormatRange& formatRange = result.formatRangeVec[j];
-            if (formatRange.start < position || formatRange.start >= position + length) {
-                break;
-            }
-            QTextLayout::FormatRange formatRangeCopy{formatRange};
-            formatRangeCopy.start -= position;
-            textBlockFormatRangeVec.append(std::move(formatRangeCopy));
-            ++i;
-        }
-        textLayout->setFormats(textBlockFormatRangeVec);
-    }
+//    QTextDocument* const doc = m_plainTextEdit->document();
+//    const int formatRangeCount = result.formatRangeVec.size();
+//    // Two is the maximum number of expected formats in a single line.  When/Why?  A key-value pair.
+//    for (int i = 0; i < formatRangeCount; i += 0) {
+//        const QTextLayout::FormatRange& formatRange0 = result.formatRangeVec[i];
+//        const QTextBlock& textBlock = doc->findBlock(formatRange0.start);
+//        assert(textBlock.isValid());
+//        const int position = textBlock.position();
+//        const int length = textBlock.length();
+//        QTextLayout* const textLayout = textBlock.layout();
+//        // Always empty, but remember QVector uses implicit sharing.
+//        QVector<QTextLayout::FormatRange> textBlockFormatRangeVec = textLayout->formats();
+//        for (int j = i; j < formatRangeCount; ++j) {
+//            const QTextLayout::FormatRange& formatRange = result.formatRangeVec[j];
+//            if (formatRange.start < position || formatRange.start >= position + length) {
+//                break;
+//            }
+//            QTextLayout::FormatRange formatRangeCopy{formatRange};
+//            formatRangeCopy.start -= position;
+//            textBlockFormatRangeVec.append(std::move(formatRangeCopy));
+//            ++i;
+//        }
+//        textLayout->setFormats(textBlockFormatRangeVec);
+//    }
     Private::afterUpdateDocumentFormats(*this);
     // TODO: Fix this bug: Ctrl+PageDown (next tab), Ctrl+PageUp (prev tab), Ctrl+F, type any char, <crash>
     qDebug() << "FindThreadWorker";

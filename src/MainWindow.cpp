@@ -32,6 +32,7 @@
 #include "MainWindowThreadWorker.h"
 #include "TextViewTextStatsService.h"
 #include "JsonTree.h"
+#include "JsonNode.h"
 
 namespace SDV {
 
@@ -385,9 +386,7 @@ struct MainWindow::Private
         self.m_input = input;
         self.m_textViewDecorator->setJsonTree(result.jsonTree);
         applyFormats(self, result.jsonTree);
-        const QStringList& lineList = result.jsonTree->jsonText.split(QRegularExpression{"\\r?\\n"});
-        std::vector<QString> lineVec{lineList.begin(), lineList.end()};
-        self.m_textView->setDoc(std::make_shared<TextViewDocument>(std::move(lineVec)));
+        self.m_textView->setDoc(result.doc);
         self.m_textView->setVisible(true);
         self.m_fileCloseAction->setEnabled(true);
         self.setWindowTitle(self.m_input.description() + " - " + kWindowTitle);
@@ -401,16 +400,43 @@ struct MainWindow::Private
         std::unordered_map<int, TextView::ForegroundFormatSet>& map = self.m_textView->lineIndex_To_ForegroundFormatSet_Map();
         map.clear();
 
-        for (const JsonTree::JsonNodeLineSegment& s : jsonTree->jsonNodeLineSegmentVec)
-        {
-            TextView::ForegroundFormatSet& set = map[s.lineIndex];
-
-            const std::shared_ptr<PaintForegroundFunctor>& f =
-                Algorithm::Map::getOrAssert(kJsonNodeType_To_PaintFgFunctor, s.jsonNodeType);
-
-            Algorithm::Set::insertNewOrAssert(set, LineFormatForeground{s.seg, f});
-        }
+        JsonNode* const jsonNode = jsonTree->rootNode.get();
+        applyFormats0(self, jsonTree, jsonNode);
         // Intentional: Do not call self.m_textView->update() here, as self.m_textView->setDoc() will call it.
+    }
+
+    // Infix recursive algorithm: Visit jsonNode, then visit jsonNode->childVec().
+    static void
+    applyFormats0(MainWindow& self, const std::shared_ptr<JsonTree>& jsonTree, JsonNode* const jsonNode)
+    {
+        applyFormats1(self, jsonTree, jsonNode);
+
+        const std::vector<JsonNode*>& childVec = jsonNode->childVec();
+        for (JsonNode* const child : childVec)
+        {
+            applyFormats0(self, jsonTree, child);
+        }
+    }
+
+    static void
+    applyFormats1(MainWindow& self, const std::shared_ptr<JsonTree>& jsonTree, JsonNode* const jsonNode)
+    {
+        auto iter = kJsonNodeType_To_PaintFgFunctor.find(jsonNode->type());
+        if (kJsonNodeType_To_PaintFgFunctor.end() == iter) {
+            // Captain Obvious says: Not all JSON nodes have formatting, e.g., object begin/end: { }.
+            return;
+        }
+        const TextViewPosition& pos = Algorithm::Map::getOrAssert(jsonTree->nodeToPosMap, jsonNode);
+        std::unordered_map<int, TextView::ForegroundFormatSet>& map = self.m_textView->lineIndex_To_ForegroundFormatSet_Map();
+        // This *might* insert a new map entry.
+        TextView::ForegroundFormatSet& set = map[pos.lineIndex];
+
+        const std::shared_ptr<PaintForegroundFunctor>& f =
+            Algorithm::Map::getOrAssert(kJsonNodeType_To_PaintFgFunctor, jsonNode->type());
+
+        LineSegment seg{.charIndex = pos.charIndex, .length = jsonNode->text().length()};
+        LineFormatForeground lff{seg, f};
+        Algorithm::Set::insertNewOrAssert(set, lff);
     }
 
     static void
@@ -567,7 +593,11 @@ MainWindow(MainWindowManager& mainWindowManager,
     fileMenu->addAction("E&xit", [this]() { Private::slotExit(*this); }, QKeySequence::StandardKey::Quit);
 
     QMenu* const editMenu = menuBar()->addMenu("&Edit");
+    editMenu->addAction(m_textView->createCopyAction(editMenu));
+    editMenu->addAction(m_textView->createSelectAllAction(editMenu));
+    editMenu->addAction(m_textView->createDeselectAction(editMenu));
     // TODO: Add again later...
+//    editMenu->addSeparator();
 //    editMenu->addAction("&Find...", m_textWidget, &TextWidget::slotFind, QKeySequence::StandardKey::Find);
 //    editMenu->addAction("&Go To...", m_textWidget, &TextWidget::slotGoTo, QKeySequence{Qt::CTRL + Qt::Key_G});
 

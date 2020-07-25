@@ -21,27 +21,13 @@ class JsonNode;
 // Ref: https://i.stack.imgur.com/C2EUm.png
 struct JsonTree
 {
-    // TODO: What to do about text storage... to prevent duplication?  std::shared_ptr<std::vector<QString>>?
-    QString jsonText;
-    // TODO!
-//    std::vector<QString> jsonTextLineVec;
     // TODO: Remove later...
-    QVector<QTextLayout::FormatRange> formatRangeVec;
+    QString jsonText;
     std::shared_ptr<JsonNode> rootNode;
     /** All nodes are owned indirectly by {@link #m_rootNode}. */
     std::unordered_map<JsonNode*, TextViewPosition> nodeToPosMap;
     /** All nodes are owned indirectly by {@link #m_rootNode}. */
     std::vector<std::vector<JsonNode*>> lineIndex_To_NodeVec;
-
-    struct JsonNodeLineSegment
-    {
-        JsonNodeType jsonNodeType;
-        int lineIndex;
-        LineSegment seg;
-    };
-    // TODO: This is useless :)
-    // Instead, pre-order traversal on rootNode with position lookup into nodeToPosMap.
-    std::vector<JsonNodeLineSegment> jsonNodeLineSegmentVec;
 };
 
 }  // namespace SDV

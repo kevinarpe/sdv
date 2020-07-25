@@ -138,6 +138,8 @@ add_executable(sdv
         src/MainWindowInput.cpp
         src/MainWindowInput.h
         src/NextIdService.cpp
-        src/NextIdService.h)
+        src/NextIdService.h
+        src/JsonTreeResult.h
+        src/JsonTreeResult.cpp)
 
 target_link_libraries(sdv Qt5::Widgets)
