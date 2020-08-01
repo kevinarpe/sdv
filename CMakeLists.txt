@@ -50,8 +50,8 @@ add_executable(sdv
         src/LineNumberAreaWidget.cpp
         src/LineNumberAreaWidget.h
         src/IWidgetWithLineNumberArea.h
-        src/StatusBar.cpp
-        src/StatusBar.h
+        src/MainWindowStatusBar.cpp
+        src/MainWindowStatusBar.h
         src/QTextBoundaryFinders.cpp
         src/QTextBoundaryFinders.h
         src/GoToWidget.cpp
@@ -140,6 +140,18 @@ add_executable(sdv
         src/NextIdService.cpp
         src/NextIdService.h
         src/JsonTreeResult.h
-        src/JsonTreeResult.cpp)
+        src/JsonTreeResult.cpp
+        src/TextViewJsonNode.cpp
+        src/TextViewJsonNode.h
+        src/TextViewJsonTree.cpp
+        src/TextViewJsonTree.h
+        src/TextViewJsonNodePositionService.cpp
+        src/TextViewJsonNodePositionService.h
+        src/BaseStatusBar.cpp
+        src/BaseStatusBar.h
+        src/QSizeGrips.cpp
+        src/QSizeGrips.h
+        src/QLabels.cpp
+        src/QLabels.h)
 
 target_link_libraries(sdv Qt5::Widgets)

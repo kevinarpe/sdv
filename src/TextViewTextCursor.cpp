@@ -281,8 +281,7 @@ struct TextViewTextCursor::Private
         const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
         if (false == pos.pos.isEqual(origPos.pos))
         {
-            // Only enable if we need later.
-//            emit self.signalPositionChanged();
+            emit self.signalPositionChanged();
         }
         // Intentional: Not else-if
         if (pos.pos.lineIndex != origPos.pos.lineIndex)

@@ -2,8 +2,7 @@
 // Created by kca on 25/7/2020.
 //
 
-#include "JsonTreeResult.h"
-#include "JsonTree.h"
+#include "TextViewJsonTree.h"
 
 namespace SDV {
 

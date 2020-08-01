@@ -21,13 +21,12 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <memory>
-//#include "QtHash.h"
-#include "JsonNode.h"
-#include "JsonTree.h"
 #include "Algorithm.h"
 #include "TextFormat.h"
 #include "Constants.h"
 #include "JsonTreeResult.h"
+#include "TextViewJsonTree.h"
+#include "TextViewJsonNode.h"
 
 #ifdef __GNUC__
 RAPIDJSON_DIAG_PUSH
@@ -63,16 +62,11 @@ public:
         \param allocator User supplied allocator. If it is null, it will create a private one.
         \param levelDepth Initial capacity of stack.
     */
-    explicit PrettyWriter2(OutputStream& os,
-                           size_t bufferCapacity,
-                           const std::unordered_map<JsonNodeType, TextFormat>& formatMap/*,
+    explicit PrettyWriter2(OutputStream& os/*,
                            StackAllocator* allocator = 0, size_t levelDepth = Base::kDefaultLevelDepth*/) :
 //        Base(os, allocator, levelDepth),
-        Base(os), indentChar_(' '), indentCharCount_(4), formatOptions_(rapidjson::kFormatDefault),
-        m_formatMap{formatMap}, m_lastBufferSize{0}
-    {
-        m_result = std::make_unique<JsonTreeResult>();
-    }
+        Base(os), indentChar_(' '), indentCharCount_(4), formatOptions_(rapidjson::kFormatDefault), m_lastBufferSize{0}
+    {}
 //
 //    explicit PrettyWriter2(StackAllocator* allocator = 0, size_t levelDepth = Base::kDefaultLevelDepth) :
 //        Base(allocator, levelDepth), indentChar_(' '), indentCharCount_(4) {}
@@ -80,19 +74,27 @@ public:
     std::unique_ptr<JsonTreeResult>
     result()
     {
-        assert(nullptr != m_result.get());
-        assert(nullptr != m_result->jsonTree->rootNode);
+        assert(nullptr != m_result.jsonTree.rootJsonNode);
         assert(m_parentNodeVec.empty());
         assert(m_currentLine.isEmpty() == false);
-        internedTextSet.clear();
+        m_internedTextSet.clear();
 
-        m_result->jsonTextLineVec.push_back(m_currentLine);
+        m_result.jsonTextLineVec.push_back(m_currentLine);
         m_currentLine.clear();
 
-        m_result->jsonTextLineVec.shrink_to_fit();
-        m_result->jsonTree->lineIndex_To_NodeVec.shrink_to_fit();
+        m_result.jsonTextLineVec.shrink_to_fit();
+        m_result.jsonTree.lineIndex_To_NodeVec.shrink_to_fit();
+
+        std::unique_ptr<JsonTreeResult> result =
+            std::make_unique<JsonTreeResult>(
+                JsonTreeResult{
+                    .jsonTextLineVec = std::move(m_result.jsonTextLineVec),
+                    .jsonTree =
+                        std::make_shared<TextViewJsonTree>(
+                            std::move(m_result.jsonTree.rootJsonNode),
+                            std::move(m_result.jsonTree.lineIndex_To_NodeVec))});
         // Intentional: std::move() is required with std::unique_ptr.
-        return std::move(m_result);
+        return std::move(result);
     }
 
     //! Set custom indentation.
@@ -126,62 +128,62 @@ public:
     bool Null()
     {
         PrettyPrefix(rapidjson::kNullType);
-        append_();
+        append();
         bool r = Base::WriteNull();
-        append_(JsonNodeType::Null);
+        append(JsonNodeType::Null);
         return r;
     }
 //    bool Bool(bool b)           { PrettyPrefix(b ? kTrueType : kFalseType); return Base::WriteBool(b); }
     bool Bool(bool b)
     {
         PrettyPrefix(b ? rapidjson::kTrueType : rapidjson::kFalseType);
-        append_();
+        append();
         bool r = Base::WriteBool(b);
-        append_(JsonNodeType::Bool);
+        append(JsonNodeType::Bool);
         return r;
     }
 //    bool Int(int i)             { PrettyPrefix(kNumberType); return Base::WriteInt(i); }
     bool Int(int i)
     {
         PrettyPrefix(rapidjson::kNumberType);
-        append_();
+        append();
         bool r = Base::WriteInt(i);
-        append_(JsonNodeType::Number);
+        append(JsonNodeType::Number);
         return r;
     }
 //    bool Uint(unsigned u)       { PrettyPrefix(kNumberType); return Base::WriteUint(u); }
     bool Uint(unsigned u)
     {
         PrettyPrefix(rapidjson::kNumberType);
-        append_();
+        append();
         bool r = Base::WriteUint(u);
-        append_(JsonNodeType::Number);
+        append(JsonNodeType::Number);
         return r;
     }
 //    bool Int64(int64_t i64)     { PrettyPrefix(kNumberType); return Base::WriteInt64(i64); }
     bool Int64(int64_t i64)
     {
         PrettyPrefix(rapidjson::kNumberType);
-        append_();
+        append();
         bool r = Base::WriteInt64(i64);
-        append_(JsonNodeType::Number);
+        append(JsonNodeType::Number);
         return r;
     }
 //    bool Uint64(uint64_t u64)   { PrettyPrefix(kNumberType); return Base::WriteUint64(u64);  }
     bool Uint64(uint64_t u64)
     {
         PrettyPrefix(rapidjson::kNumberType);
-        append_();
+        append();
         bool r = Base::WriteUint64(u64);
-        append_(JsonNodeType::Number);
+        append(JsonNodeType::Number);
         return r;
     }
     bool Double(double d)
     {
         PrettyPrefix(rapidjson::kNumberType);
-        append_();
+        append();
         bool r = Base::WriteDouble(d);
-        append_(JsonNodeType::Number);
+        append(JsonNodeType::Number);
         return r;
     }
 
@@ -189,9 +191,9 @@ public:
     {
         (void)copy;
         PrettyPrefix(rapidjson::kNumberType);
-        append_();
+        append();
         bool r = Base::WriteString(str, length);
-        append_(JsonNodeType::Number);
+        append(JsonNodeType::Number);
         return r;
     }
 
@@ -221,7 +223,7 @@ public:
         PrettyPrefix(rapidjson::kObjectType);
         new (Base::level_stack_.template Push<typename Base::Level>()) typename Base::Level(false);
         bool r = Base::WriteStartObject();
-        append_(JsonNodeType::ObjectBegin);
+        append(JsonNodeType::ObjectBegin);
         return r;
     }
 
@@ -253,7 +255,7 @@ public:
         RAPIDJSON_ASSERT(ret == true);
         if (Base::level_stack_.Empty()) // end of json text
             Base::os_->Flush();
-        append_(JsonNodeType::ObjectEnd, memberCount);
+        append(JsonNodeType::ObjectEnd, memberCount);
         return true;
     }
 
@@ -262,7 +264,7 @@ public:
         PrettyPrefix(rapidjson::kArrayType);
         new (Base::level_stack_.template Push<typename Base::Level>()) typename Base::Level(true);
         bool r = Base::WriteStartArray();
-        append_(JsonNodeType::ArrayBegin);
+        append(JsonNodeType::ArrayBegin);
         return r;
     }
 
@@ -282,7 +284,7 @@ public:
         RAPIDJSON_ASSERT(ret == true);
         if (Base::level_stack_.Empty()) // end of json text
             Base::os_->Flush();
-        append_(JsonNodeType::ArrayEnd, memberCount);
+        append(JsonNodeType::ArrayEnd, memberCount);
         return true;
     }
 
@@ -367,15 +369,15 @@ private:
     {
         (void)isCopy;
         PrettyPrefix(rapidjson::kStringType);
-        append_();
+        append();
         const bool r = Base::WriteString(str, length);
-        append_(jsonNodeType);
+        append(jsonNodeType);
         return r;
     }
 //    LAST: Upgrade to capture/build JSONPath
 //    Is it possible to capture begin and end of objects & arrays to highlight background box, like Chrome plugin?
 //    Also, that begin/end can be used for nice "jump to..." begin/end feature in text view.
-    QString append_()
+    QString append()
     {
         const size_t bufferSize = Base::os_->GetSize();
         const typename TargetEncoding::Ch* str = Base::os_->GetString();
@@ -385,7 +387,7 @@ private:
         if (indexOfNewLine >= 0)
         {
             m_currentLine += token.left(indexOfNewLine);
-            m_result->jsonTextLineVec.push_back(m_currentLine);
+            m_result.jsonTextLineVec.push_back(m_currentLine);
 
             m_currentLine = token.mid(1 + indexOfNewLine);
             ++m_lineIndex;
@@ -396,171 +398,185 @@ private:
         return token;
     }
 
-    const std::unordered_map<JsonNodeType, TextFormat>& m_formatMap;
     size_t m_lastBufferSize;
     QString m_currentLine;
 
-    std::vector<JsonNode*> m_parentNodeVec;
+    std::vector<std::shared_ptr<TextViewJsonNode>> m_parentNodeVec;
     int m_lineIndex = 0;
-    std::unique_ptr<JsonTreeResult> m_result;
-    std::unordered_set<QString> internedTextSet;
+    std::unordered_set<QString> m_internedTextSet;
+    struct
+    {
+        std::vector<QString> jsonTextLineVec;
+        struct
+        {
+            std::shared_ptr<TextViewJsonNode> rootJsonNode;
+            /** All nodes are owned indirectly by {@link #rootJsonNode}. */
+            std::vector<std::vector<std::shared_ptr<TextViewJsonNode>>> lineIndex_To_NodeVec;
+
+        } jsonTree;
+
+    } m_result;
 
     /**
      * @param memberCount
      *        -1 unless ending an object or array
      */
-    void append_(const JsonNodeType jsonNodeType, const int memberCount = -1)
+    void append(const JsonNodeType jsonNodeType, const int memberCount = -1)
     {
         // Intentional: Suppress compiler warning for unused args
         (void)memberCount;
-        const QString& text = append_();
-        std::unordered_map<JsonNodeType, TextFormat>::const_iterator iter = m_formatMap.find(jsonNodeType);
-        JsonNode* child = nullptr;
-        // Must to set pos.charIndex in logic below.
-        TextViewPosition pos{.lineIndex = m_lineIndex};
+        const QString& text = append();
+        std::shared_ptr<TextViewJsonNode> child = nullptr;
         switch (jsonNodeType)
         {
             case JsonNodeType::Null:
             case JsonNodeType::Bool:
             case JsonNodeType::Number:
-            case JsonNodeType::String: {
-                if (nullptr != m_result->jsonTree->rootNode)
+            case JsonNodeType::String:
+            {
+                TextViewPosition pos{.lineIndex = m_lineIndex, .charIndex = m_currentLine.length() - text.length()};
+                if (nullptr == m_result.jsonTree.rootJsonNode)
                 {
-                    JsonNode* const parent = m_parentNodeVec.back();
+                    m_result.jsonTree.rootJsonNode =
+                        child = TextViewJsonNode::createRoot(jsonNodeType, text, pos);
+                }
+                else {
+                    const std::shared_ptr<TextViewJsonNode>& parent = m_parentNodeVec.back();
                     if (JsonNodeType::Key == parent->type())
                     {
                         m_parentNodeVec.pop_back();
                     }
-                    child = newJsonNode_(parent, jsonNodeType, text);
+                    child = addChild(parent, jsonNodeType, text, pos);
                 }
-                else {
-                    child = newJsonNode_(nullptr, jsonNodeType, text);
-                    m_result->jsonTree->rootNode.reset(child);
-                }
-                assert(m_formatMap.end() != iter);
-                const TextFormat& format = iter->second;
-                pos.charIndex = m_currentLine.length() - text.length();
                 break;
             }
             case JsonNodeType::Key:
             {
-                assert(nullptr != m_result->jsonTree->rootNode);
-                JsonNode* const parent = m_parentNodeVec.back();
+                assert(nullptr != m_result.jsonTree.rootJsonNode);
+                const std::shared_ptr<TextViewJsonNode>& parent = m_parentNodeVec.back();
                 assert(JsonNodeType::ObjectBegin == parent->type());
-                child = newJsonNode_(parent, jsonNodeType, text);
+                TextViewPosition pos{.lineIndex = m_lineIndex, .charIndex = m_currentLine.length() - text.length()};
+                child = addChild(parent, jsonNodeType, text, pos);
                 m_parentNodeVec.push_back(child);
-
-                assert(m_formatMap.end() != iter);
-                const TextFormat& format = iter->second;
-                pos.charIndex = m_currentLine.length() - text.length();
                 break;
             }
             case JsonNodeType::ObjectBegin:
             {
-                assert(m_formatMap.end() == iter);
-                if (nullptr != m_result->jsonTree->rootNode) {
-                    JsonNode* const parent = m_parentNodeVec.back();
+                TextViewPosition pos{.lineIndex = m_lineIndex, .charIndex = m_currentLine.length() - 1};
+                if (nullptr == m_result.jsonTree.rootJsonNode)
+                {
+                    m_result.jsonTree.rootJsonNode =
+                        child = TextViewJsonNode::createRoot(jsonNodeType, Constants::Json::kObjectBegin, pos);
+                    m_parentNodeVec.push_back(child);
+                }
+                else {
+                    const std::shared_ptr<TextViewJsonNode>& parent = m_parentNodeVec.back();
                     if (JsonNodeType::Key == parent->type())
                     {
                         m_parentNodeVec.pop_back();
                     }
-                    child = new JsonNode{parent, jsonNodeType, Constants::Json::kObjectBegin};
+                    child = parent->addChild(jsonNodeType, Constants::Json::kObjectBegin, pos);
                     m_parentNodeVec.push_back(child);
                 }
-                else {
-                    child = new JsonNode{nullptr, jsonNodeType, Constants::Json::kObjectBegin};
-                    m_result->jsonTree->rootNode.reset(child);
-                    m_parentNodeVec.push_back(child);
-                }
-                assert(QLatin1Char{'{'} == m_currentLine[m_currentLine.length() - 1]);
-                pos.charIndex = m_currentLine.length() - 1;
+                assert(Constants::Json::kObjectBegin == m_currentLine[m_currentLine.length() - 1]);
                 break;
             }
             case JsonNodeType::ArrayBegin:
             {
-                assert(m_formatMap.end() == iter);
-                if (nullptr != m_result->jsonTree->rootNode) {
-                    JsonNode* const parent = m_parentNodeVec.back();
+                TextViewPosition pos{.lineIndex = m_lineIndex, .charIndex = m_currentLine.length() - 1};
+                if (nullptr == m_result.jsonTree.rootJsonNode)
+                {
+                    child = TextViewJsonNode::createRoot(jsonNodeType, Constants::Json::kArrayBegin, pos);
+                    m_result.jsonTree.rootJsonNode = child;
+                    m_parentNodeVec.push_back(child);
+                }
+                else {
+                    const std::shared_ptr<TextViewJsonNode>& parent = m_parentNodeVec.back();
                     if (JsonNodeType::Key == parent->type())
                     {
                         m_parentNodeVec.pop_back();
                     }
-                    child = new JsonNode{parent, jsonNodeType, Constants::Json::kArrayBegin};
+                    child = parent->addChild(jsonNodeType, Constants::Json::kArrayBegin, pos);
                     m_parentNodeVec.push_back(child);
                 }
-                else {
-                    child = new JsonNode{nullptr, jsonNodeType, Constants::Json::kArrayBegin};
-                    m_result->jsonTree->rootNode.reset(child);
-                    m_parentNodeVec.push_back(child);
-                }
-                assert(QLatin1Char{'['} == m_currentLine[m_currentLine.length() - 1]);
-                pos.charIndex = m_currentLine.length() - 1;
+                assert(Constants::Json::kArrayBegin == m_currentLine[m_currentLine.length() - 1]);
                 break;
             }
             case JsonNodeType::ObjectEnd:
             {
-                assert(m_formatMap.end() == iter);
-                assert(nullptr != m_result->jsonTree->rootNode);
-                JsonNode* const parent = m_parentNodeVec.back();
+                assert(nullptr != m_result.jsonTree.rootJsonNode);
+                const std::shared_ptr<TextViewJsonNode>& parent = m_parentNodeVec.back();
                 assert(JsonNodeType::ObjectBegin == parent->type());
                 m_parentNodeVec.pop_back();
+                TextViewPosition pos{.lineIndex = m_lineIndex, .charIndex = m_currentLine.length() - 1};
                 // Intentional: We need this final child node to make hide/show logic more simple.
-                child = new JsonNode{parent, jsonNodeType, Constants::Json::kObjectEnd};
+                child = parent->addChild(jsonNodeType, Constants::Json::kObjectEnd, pos);
 
-                assert(QLatin1Char{'}'} == m_currentLine[m_currentLine.length() - 1]);
-                pos.charIndex = m_currentLine.length() - 1;
+                assert(Constants::Json::kObjectEnd == m_currentLine[m_currentLine.length() - 1]);
                 break;
             }
             case JsonNodeType::ArrayEnd:
             {
-                assert(m_formatMap.end() == iter);
-                assert(nullptr != m_result->jsonTree->rootNode);
-                JsonNode* const parent = m_parentNodeVec.back();
+                assert(nullptr != m_result.jsonTree.rootJsonNode);
+                const std::shared_ptr<TextViewJsonNode>& parent = m_parentNodeVec.back();
                 assert(JsonNodeType::ArrayBegin == parent->type());
                 m_parentNodeVec.pop_back();
+                TextViewPosition pos{.lineIndex = m_lineIndex, .charIndex = m_currentLine.length() - 1};
                 // Intentional: We need this final child node to make hide/show logic more simple.
-                child = new JsonNode{parent, jsonNodeType, Constants::Json::kArrayEnd};
+                child = parent->addChild(jsonNodeType, Constants::Json::kArrayEnd, pos);
 
-                assert(QLatin1Char{']'} == m_currentLine[m_currentLine.length() - 1]);
-                pos.charIndex = m_currentLine.length() - 1;
+                assert(Constants::Json::kArrayEnd == m_currentLine[m_currentLine.length() - 1]);
                 break;
             }
             default:
                 assert(false);
         }
-        if (m_lineIndex == m_result->jsonTree->lineIndex_To_NodeVec.size())
+        if (m_lineIndex == m_result.jsonTree.lineIndex_To_NodeVec.size())
         {
-            std::vector<JsonNode*> nodeVec{};
-            // Intentional: Very conservative
+            std::vector<std::shared_ptr<TextViewJsonNode>> nodeVec{};
+            // Intentional: Very conservative: There are no guarantees in STL for initial capacity of std::vector.
             nodeVec.shrink_to_fit();
-            m_result->jsonTree->lineIndex_To_NodeVec.push_back(nodeVec);
+            m_result.jsonTree.lineIndex_To_NodeVec.push_back(nodeVec);
         }
         if (nullptr != child)
         {
-            assert(false == m_result->jsonTree->nodeToPosMap.contains(child));
-            Algorithm::Map::insertNewOrAssert(m_result->jsonTree->nodeToPosMap, child, pos);
-
-            std::vector<JsonNode*>& nodeVec = m_result->jsonTree->lineIndex_To_NodeVec.back();
+            std::vector<std::shared_ptr<TextViewJsonNode>>& nodeVec = m_result.jsonTree.lineIndex_To_NodeVec.back();
             nodeVec.reserve(nodeVec.size() + 1);
             nodeVec.push_back(child);
         }
     }
 
-    JsonNode*
-    newJsonNode_(JsonNode* nullableParent, JsonNodeType type, const QString& text)
+    std::shared_ptr<TextViewJsonNode>
+    addChild(const std::shared_ptr<TextViewJsonNode>& parent,
+             JsonNodeType type,
+             const QString& text,
+             const TextViewPosition& pos)
     {
-//        static int staticCount = 0;
-        // See: https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/lang/String.html#intern()
-        std::pair<std::unordered_set<QString>::iterator, bool> insert_pair = internedTextSet.insert(text);
-        const QString& internedText = *(insert_pair.first);
-//        if (insert_pair.second) {
-//            ++staticCount;
-//            if (0 == (staticCount % 1000)) {
-//                qDebug() << staticCount;
-//            }
-//        }
-        JsonNode* const x = new JsonNode{nullableParent, type, internedText};
+        const QString& internedText = internText(type, text);
+        std::shared_ptr<TextViewJsonNode> x = parent->addChild(type, internedText, pos);
         return x;
+    }
+
+    const QString&
+    internText(JsonNodeType type, const QString& text)
+    {
+        switch (type)
+        {
+            case JsonNodeType::Null:
+            case JsonNodeType::Bool:
+            case JsonNodeType::Number:
+            case JsonNodeType::String:
+            case JsonNodeType::Key:
+            {
+                // See: https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/lang/String.html#intern()
+                std::pair<std::unordered_set<QString>::iterator, bool> insert_pair = m_internedTextSet.insert(text);
+                const QString& internedText = *(insert_pair.first);
+                return internedText;
+            }
+            default: {
+                assert(false);
+            }
+        }
     }
 
     // Prohibit copy constructor & assignment operator.

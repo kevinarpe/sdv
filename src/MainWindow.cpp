@@ -3,7 +3,7 @@
 //
 
 #include "MainWindow.h"
-#include <utility>
+#include <set>
 #include <rapidjson/error/en.h>
 #include <QMessageBox>
 #include <QAction>
@@ -16,10 +16,11 @@
 #include <QScreen>
 #include <QStyle>
 #include <QMimeData>
+#include <QCloseEvent>
 #include <QDebug>
 #include "Algorithm.h"
 #include "MainWindowManager.h"
-#include "StatusBar.h"
+#include "MainWindowStatusBar.h"
 #include "TextView.h"
 #include "TextViewLineNumberArea.h"
 #include "TextViewDocument.h"
@@ -31,8 +32,9 @@
 #include "MainWindowInputStream.h"
 #include "MainWindowThreadWorker.h"
 #include "TextViewTextStatsService.h"
-#include "JsonTree.h"
-#include "JsonNode.h"
+#include "TextViewJsonTree.h"
+#include "TextViewJsonNode.h"
+#include "TextViewJsonNodePositionService.h"
 
 namespace SDV {
 
@@ -162,7 +164,7 @@ struct MainWindow::Private
                 self.m_textView->setVisible(false);
                 self.m_fileCloseAction->setEnabled(false);
                 self.m_statusBarTextViewLabelBaseText = "";
-                self.m_statusBar->textViewLabel()->setText(self.m_statusBarTextViewLabelBaseText);
+                self.m_statusBar->textStatsLabel()->setText(self.m_statusBarTextViewLabelBaseText);
                 return false;
             }
         }
@@ -187,7 +189,7 @@ struct MainWindow::Private
         const TextViewSelection& selection = self.m_textView->textCursor().selection();
         if (false == selection.isValid())
         {
-            self.m_statusBar->textViewLabel()->setText(self.m_statusBarTextViewLabelBaseText);
+            self.m_statusBar->textStatsLabel()->setText(self.m_statusBarTextViewLabelBaseText);
             return;
         }
         const int requestId = self.m_threadWorker->nextRequestId();
@@ -214,7 +216,7 @@ struct MainWindow::Private
                 .arg(kLocale.toString(result.textStats.utf8ByteCount))
                 .arg(1 == result.textStats.utf8ByteCount ? "byte" : "bytes");
 
-        self.m_statusBar->textViewLabel()->setText(x);
+        self.m_statusBar->textStatsLabel()->setText(x);
     }
 
     static void
@@ -384,6 +386,9 @@ struct MainWindow::Private
     openComplete0(MainWindow& self, const MainWindowThreadWorker::OpenResult& result, const MainWindowInput& input)
     {
         self.m_input = input;
+        // Enable only if necessary.
+//        self.m_jsonTree = result.jsonTree;
+        self.m_jsonNodePositionService = std::make_unique<TextViewJsonNodePositionService>(*result.jsonTree);
         self.m_textViewDecorator->setJsonTree(result.jsonTree);
         applyFormats(self, result.jsonTree);
         self.m_textView->setDoc(result.doc);
@@ -395,46 +400,50 @@ struct MainWindow::Private
     }
 
     static void
-    applyFormats(MainWindow& self, const std::shared_ptr<JsonTree>& jsonTree)
+    applyFormats(MainWindow& self, const std::shared_ptr<TextViewJsonTree>& jsonTree)
     {
         std::unordered_map<int, TextView::ForegroundFormatSet>& map = self.m_textView->lineIndex_To_ForegroundFormatSet_Map();
         map.clear();
 
-        JsonNode* const jsonNode = jsonTree->rootNode.get();
+        const TextViewJsonNode& jsonNode = jsonTree->rootJsonNode();
         applyFormats0(self, jsonTree, jsonNode);
         // Intentional: Do not call self.m_textView->update() here, as self.m_textView->setDoc() will call it.
     }
 
     // Infix recursive algorithm: Visit jsonNode, then visit jsonNode->childVec().
     static void
-    applyFormats0(MainWindow& self, const std::shared_ptr<JsonTree>& jsonTree, JsonNode* const jsonNode)
+    applyFormats0(MainWindow& self,
+                  const std::shared_ptr<TextViewJsonTree>& jsonTree,
+                  const TextViewJsonNode& jsonNode)
     {
         applyFormats1(self, jsonTree, jsonNode);
 
-        const std::vector<JsonNode*>& childVec = jsonNode->childVec();
-        for (JsonNode* const child : childVec)
+        const std::vector<std::shared_ptr<TextViewJsonNode>>& childVec = jsonNode.childVec();
+        for (const std::shared_ptr<TextViewJsonNode>& child : childVec)
         {
-            applyFormats0(self, jsonTree, child);
+            applyFormats0(self, jsonTree, *child);
         }
     }
 
     static void
-    applyFormats1(MainWindow& self, const std::shared_ptr<JsonTree>& jsonTree, JsonNode* const jsonNode)
+    applyFormats1(MainWindow& self,
+                  const std::shared_ptr<TextViewJsonTree>& jsonTree,
+                  const TextViewJsonNode& jsonNode)
     {
-        auto iter = kJsonNodeType_To_PaintFgFunctor.find(jsonNode->type());
+        auto iter = kJsonNodeType_To_PaintFgFunctor.find(jsonNode.type());
         if (kJsonNodeType_To_PaintFgFunctor.end() == iter) {
             // Captain Obvious says: Not all JSON nodes have formatting, e.g., object begin/end: { }.
             return;
         }
-        const TextViewPosition& pos = Algorithm::Map::getOrAssert(jsonTree->nodeToPosMap, jsonNode);
+        const TextViewPosition& pos = jsonNode.pos();
         std::unordered_map<int, TextView::ForegroundFormatSet>& map = self.m_textView->lineIndex_To_ForegroundFormatSet_Map();
         // This *might* insert a new map entry.
         TextView::ForegroundFormatSet& set = map[pos.lineIndex];
 
         const std::shared_ptr<PaintForegroundFunctor>& f =
-            Algorithm::Map::getOrAssert(kJsonNodeType_To_PaintFgFunctor, jsonNode->type());
+            Algorithm::Map::getOrAssert(kJsonNodeType_To_PaintFgFunctor, jsonNode.type());
 
-        LineSegment seg{.charIndex = pos.charIndex, .length = jsonNode->text().length()};
+        LineSegment seg{.charIndex = pos.charIndex, .length = jsonNode.text().length()};
         LineFormatForeground lff{seg, f};
         Algorithm::Set::insertNewOrAssert(set, lff);
     }
@@ -451,7 +460,7 @@ struct MainWindow::Private
                 .arg(kLocale.toString(result.utf8ByteCount))
                 .arg(1 == result.utf8ByteCount ? "byte" : "bytes");
 
-        self.m_statusBar->textViewLabel()->setText(self.m_statusBarTextViewLabelBaseText);
+        self.m_statusBar->textStatsLabel()->setText(self.m_statusBarTextViewLabelBaseText);
     }
 
     static void
@@ -517,6 +526,25 @@ struct MainWindow::Private
             + "<br>Source Code: <a href='https://github.com/kevinarpe/sdv'>https://github.com/kevinarpe/sdv</a>"
             );
     }
+
+    static void
+    slotTextCursorPositionChanged(MainWindow& self)
+    {
+        // TODO: Move off-thread for speed?  Not sure...
+        const TextViewGraphemePosition& pos = self.m_textView->textCursor().position();
+        self.m_statusBar->slotSetTextCursorPosition(pos.pos.lineIndex, pos.pos.charIndex);
+        // Also: Update status bar to show text cursor position.
+        // @Nullable
+        const std::shared_ptr<TextViewJsonNode>& jsonNode = self.m_jsonNodePositionService->tryFind(pos.pos);
+        if (nullptr == jsonNode)
+        {
+            // clear
+        }
+        else {
+            // how do we know the index of an array element?
+            // TODO: Walk to root.  Each step can be a separate hyperlink so user can click to jump.
+        }
+    }
 };
 
 // public static
@@ -534,10 +562,11 @@ MainWindow(MainWindowManager& mainWindowManager,
       m_formatMap{formatMap},
       // Intentional: Always start as 'None'.  Only update 'm_input' if 'input' is opened successfully.
       m_input{MainWindowInput::kNone},
-      m_statusBar{new StatusBar{this}},
+      m_statusBar{new MainWindowStatusBar{this}},
       m_mainWindowManagerToken{mainWindowManager.add(*this)},
       m_isClosing{false},
-      m_threadWorker{threadWorker}
+      m_threadWorker{threadWorker},
+      m_jsonNodePositionService{std::make_unique<TextViewJsonNodePositionService>()}
 {
     setAttribute(Qt::WidgetAttribute::WA_DeleteOnClose);
     setWindowTitle(kWindowTitle);
@@ -561,7 +590,7 @@ MainWindow(MainWindowManager& mainWindowManager,
 
     setAcceptDrops(true);
     setStatusBar(m_statusBar);
-    m_statusBar->textViewLabel()->setTextFormat(Qt::TextFormat::RichText);
+    m_statusBar->textStatsLabel()->setTextFormat(Qt::TextFormat::RichText);
 
     m_textView->setFont(QFont{"Deja Vu Sans Mono", 12});
     // Intentional: Use default from IntelliJ.
@@ -634,7 +663,10 @@ MainWindow(MainWindowManager& mainWindowManager,
                          Private::slotOpenClipboardTextComplete(*this, result);
                      });
 
-    QObject::connect(m_textView, &TextView::signalSelectedTextChanged, [this]() { Private::slotSelectedTextChanged(*this); });
+    QObject::connect(m_textView, &TextView::signalSelectedTextChanged,
+                     // Optional: Provide context QObject to help with disconnect (during dtor).
+                     this,
+                     [this]() { Private::slotSelectedTextChanged(*this); });
 
     QObject::connect(m_threadWorker, &MainWindowThreadWorker::signalCalcTextSelectionStatsComplete,
                      // Important: Provide context QObject so the connection type will be queued (thread-safe).
@@ -643,6 +675,11 @@ MainWindow(MainWindowManager& mainWindowManager,
                      {
                          Private::slotCalcTextSelectionStatsComplete(*this, result);
                      });
+
+    QObject::connect(&(m_textView->textCursor()), &TextViewTextCursor::signalPositionChanged,
+                     // Optional: Provide context QObject to help with disconnect (during dtor).
+                     this,
+                     [this]() { Private::slotTextCursorPositionChanged(*this); });
 
     Private::openInput(*this, input);
 }

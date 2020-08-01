@@ -47,13 +47,13 @@ struct MainWindowThreadWorker::Private
             return;
         }
         rapidjson::StringBuffer sb{nullptr, static_cast<size_t>(utf8BufferCapacity)};
-        PrettyWriter2 pw{sb, static_cast<std::size_t>(utf8BufferCapacity), self.m_formatMap};
+        PrettyWriter2 pw{sb};
         assert(doc.Accept(pw));
         // Intentional: std::move() is required with std::unique_ptr.
         std::unique_ptr<JsonTreeResult> jsonTreeResult = std::move(pw.result());
-        result->jsonTree = jsonTreeResult->jsonTree;
         // Intentional: Use std::move() on jsonTreeResult->jsonTextLineVec b/c jsonTreeResult is destroyed at end of this scope.
         result->doc = std::make_shared<TextViewDocument>(std::move(jsonTreeResult->jsonTextLineVec));
+        result->jsonTree = jsonTreeResult->jsonTree;
 
         const std::shared_ptr<TextViewTextStatsService>& tss = self.m_textViewTextStatsServiceMap.getOrAssert(textStatsServiceId);
         result->textStats = tss->setDoc(result->doc);
@@ -63,9 +63,9 @@ struct MainWindowThreadWorker::Private
 // public static
 MainWindowThreadWorker*
 MainWindowThreadWorker::
-create(const std::unordered_map<JsonNodeType, TextFormat>& formatMap)
+create()
 {
-    MainWindowThreadWorker* const self = new MainWindowThreadWorker{formatMap};
+    MainWindowThreadWorker* const self = new MainWindowThreadWorker{};
     QThread* const thread = new QThread{QCoreApplication::instance()};
     // This *sometimes* works on Linux using CLion/GDB.
     // Ref: https://stackoverflow.com/a/26179765/257299
@@ -88,9 +88,8 @@ create(const std::unordered_map<JsonNodeType, TextFormat>& formatMap)
 
 // private
 MainWindowThreadWorker::
-MainWindowThreadWorker(const std::unordered_map<JsonNodeType, TextFormat>& formatMap)
+MainWindowThreadWorker()
     : Base{nullptr},
-      m_formatMap{formatMap},
       m_nextIdService{NextIdService::withFirstId(1)}
 {}
 

@@ -15,7 +15,6 @@ utf8ByteCount(const QString& s, const int offset, const int length)
     assert(offset >= 0 && (offset + length) <= size);
 
     const QChar* data = s.constData();
-    data += offset;
     int byteCount = 0;
 
     for (int i = offset; i < offset + length; ++i)

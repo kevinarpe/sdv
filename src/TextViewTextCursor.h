@@ -84,8 +84,7 @@ public slots:
     void slotDeselect();
 
 signals:
-    // Only enable if we need later.
-//    void signalPositionChanged();
+    void signalPositionChanged();
     void signalLineChange(int lineIndex);
 
 protected:

@@ -11,15 +11,13 @@
 
 namespace SDV {
 
-class JsonTree;
+class TextViewJsonTree;
 
 /** Separate values-to-be-moved from other values.  */
 struct JsonTreeResult
 {
-    JsonTreeResult();
-
     std::vector<QString> jsonTextLineVec;
-    std::shared_ptr<JsonTree> jsonTree;
+    std::shared_ptr<TextViewJsonTree> jsonTree;
 };
 
 }  // namespace SDV

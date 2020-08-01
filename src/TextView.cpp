@@ -90,11 +90,11 @@ struct TextView::Private
     {
         const std::vector<QString>& lineVec = self.m_docView->doc().lineVec();
         qreal x = 0;
-        std::for_each(lineVec.begin(), lineVec.end(),
-                      [&fontMetricsF, &x](const QString& line)
-                      {
-                          x = std::max(x, fontMetricsF.horizontalAdvance(line));
-                      });
+        for (const QString& line : lineVec)
+        {
+            const qreal x2 = fontMetricsF.horizontalAdvance(line);
+            x = std::max(x, x2);
+        }
         return x;
     }
 

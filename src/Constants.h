@@ -58,6 +58,11 @@ struct Constants
         static const QString kEditCopy;       // {QLatin1String{"edit-copy"}}
         static const QString kEditSelectAll;  // {QLatin1String{"edit-select-all"}}
     };
+
+    struct Style
+    {
+        static const QString kFusion;  // {QLatin1String{"fusion"}}
+    };
 };
 
 }  // namespace SDV

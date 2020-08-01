@@ -51,6 +51,8 @@
  * Ctrl+MouseWheel should adjust font size.
  * Right click any JSON node: Close all branches to parent.
  * Add text cursor location (line number and column number) to the status bar
+ * How many classes can be (re-)declared as 'final'?  Be explicit!
+ * Ctrl++ and Ctrl+- will open/close nodes
  *
  * x Input?  x Clipboard, x file, x drag-n-drop
  * x Multiple tabs->windows for multiple inputs
@@ -228,8 +230,7 @@ int main(int argc, char *argv[])
     parser.process(app);
 
     SDV::MainWindowManager mainWindowManager{};
-    const std::unordered_map<SDV::JsonNodeType, SDV::TextFormat> formatMap{create()};
-    SDV::MainWindowThreadWorker* const mainWindowThreadWorker = SDV::MainWindowThreadWorker::create(formatMap);
+    SDV::MainWindowThreadWorker* const mainWindowThreadWorker = SDV::MainWindowThreadWorker::create();
 
     // Ex: [ ] or [ "-" ] or [ "data/twitter.json" ] or [ "-", "data/twitter.json" ]
     // @EmptyContainerAllowed
@@ -238,6 +239,7 @@ int main(int argc, char *argv[])
     {
         filePathList.append(SDV::Constants::kStdinFileName);
     }
+    const std::unordered_map<SDV::JsonNodeType, SDV::TextFormat> formatMap{create()};
 
     if (filePathList.isEmpty())
     {

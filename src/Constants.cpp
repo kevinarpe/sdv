@@ -58,4 +58,7 @@ const QString Constants::IconThemeName::kEditCopy{QLatin1String{"edit-copy"}};
 // public static
 const QString Constants::IconThemeName::kEditSelectAll{QLatin1String{"edit-select-all"}};
 
+// public static
+const QString Constants::Style::kFusion{QLatin1String{"fusion"}};
+
 }  // namespace SDV

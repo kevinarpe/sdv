@@ -16,14 +16,15 @@ class QThread;
 namespace SDV {
 
 class MainWindowManager;
-class StatusBar;
-//class TabWidget;
+class MainWindowStatusBar;
 class TextWidget;
 class TextView;
 class TextViewLineNumberArea;
 class TextViewDecorator;
 class MainWindowThreadWorker;
 class TextViewTextStatsService;
+class TextViewJsonTree;
+class TextViewJsonNodePositionService;
 
 class MainWindow : public QMainWindow
 {
@@ -55,7 +56,7 @@ private:
     struct Private;
     const std::unordered_map<JsonNodeType, TextFormat>& m_formatMap;
     MainWindowInput m_input;
-    StatusBar* m_statusBar;
+    MainWindowStatusBar* m_statusBar;
     /** Ex: "7,245 lines, 13,845 Unicode chars, 14,252 UTF-8 bytes" */
     QString m_statusBarTextViewLabelBaseText;
     TextView* m_textView;
@@ -67,6 +68,9 @@ private:
     QMenu* m_windowMenu;
     bool m_isClosing;
     MainWindowThreadWorker* m_threadWorker;
+    // Enable only if necessary.
+//    std::shared_ptr<TextViewJsonTree> m_jsonTree;
+    std::unique_ptr<TextViewJsonNodePositionService> m_jsonNodePositionService;
     std::unordered_map<QAction*, MainWindowInput> m_windowMenuAction_To_Input_Map;
     std::vector<QMetaObject::Connection> m_qObjectConnectionVec;
 

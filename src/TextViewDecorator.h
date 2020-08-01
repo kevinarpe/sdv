@@ -13,8 +13,8 @@ class QLabel;
 namespace SDV {
 
 class TextView;
-class JsonTree;
-class JsonNode;
+class TextViewJsonTree;
+class TextViewJsonNode;
 class TreeNodeExpander;
 
 class TextViewDecorator : public QObject
@@ -29,7 +29,7 @@ public:
     TextViewDecorator(TextView& parent);
     ~TextViewDecorator() override = default;
 
-    void setJsonTree(const std::shared_ptr<JsonTree>& jsonTree);
+    void setJsonTree(const std::shared_ptr<TextViewJsonTree>& jsonTree);
 
     /** Default: {@link #kTextColor} */
     const QColor& textColor() { return m_textColor; }
@@ -45,17 +45,17 @@ private:
     struct Private;
     TextView& m_textView;
     QColor m_textColor;
-    std::shared_ptr<JsonTree> m_jsonTree;
+    std::shared_ptr<TextViewJsonTree> m_jsonTree;
     struct JsonTreeNode
     {
-        JsonNode* jsonNode;
+        std::shared_ptr<TextViewJsonNode> jsonNode;
         TreeNodeExpander* expander;
         QMetaObject::Connection expanderConnection;
         QLabel* sizeLabel;
     };
     std::vector<JsonTreeNode> m_freeTreeNodeVec;
     std::unordered_map<int, JsonTreeNode> m_lineIndex_To_JsonTreeNode_Map;
-    std::unordered_map<JsonNode*, bool> m_jsonNode_To_IsExpanded_Map;
+    std::unordered_map<std::shared_ptr<TextViewJsonNode>, bool> m_jsonNode_To_IsExpanded_Map;
 };
 
 }  // namespace SDV

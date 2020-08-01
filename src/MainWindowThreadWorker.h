@@ -18,7 +18,7 @@ namespace SDV {
 
 class MainWindowInputStream;
 class TextViewDocument;
-class JsonTree;
+class TextViewJsonTree;
 class MainWindow;
 
 class MainWindowThreadWorker : public QObject
@@ -27,7 +27,8 @@ class MainWindowThreadWorker : public QObject
 
 public:
     using Base = QObject;
-    static MainWindowThreadWorker* create(const std::unordered_map<JsonNodeType, TextFormat>& formatMap);
+    static MainWindowThreadWorker* create();
+
     ~MainWindowThreadWorker() override = default;
 
     int insertNewTextStatsServiceOrAssert(const std::shared_ptr<TextViewTextStatsService>& p);
@@ -38,7 +39,7 @@ public:
     {
         int requestId;
         rapidjson::ParseResult jsonParseResult;
-        std::shared_ptr<JsonTree> jsonTree;
+        std::shared_ptr<TextViewJsonTree> jsonTree;
         std::shared_ptr<TextViewDocument> doc;
         TextViewTextStatsService::Result textStats;
     };
@@ -67,11 +68,9 @@ signals:
     void signalCalcTextSelectionStatsComplete(const CalcTextSelectionStatsResult& result);
 
 private:
-    // TODO: Move 'formatMap' to a global singleton to allow updates at runtime and read/write to config files
-    MainWindowThreadWorker(const std::unordered_map<JsonNodeType, TextFormat>& formatMap);
+    MainWindowThreadWorker();
 
     struct Private;
-    const std::unordered_map<JsonNodeType, TextFormat>& m_formatMap;
     ThreadSafeSharedPointerMap<TextViewTextStatsService> m_textViewTextStatsServiceMap;
     NextIdService m_nextIdService;
 };

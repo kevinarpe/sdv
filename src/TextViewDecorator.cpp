@@ -5,11 +5,12 @@
 #include "TextViewDecorator.h"
 #include <QLabel>
 #include <QScrollBar>
+#include <QKeyEvent>
 #include <QDebug>
 #include "TextView.h"
-#include "JsonTree.h"
+#include "TextViewJsonTree.h"
 #include "TreeNodeExpander.h"
-#include "JsonNode.h"
+#include "TextViewJsonNode.h"
 #include "Algorithm.h"
 #include "TextViewPosition.h"
 #include "TextViewDocumentView.h"
@@ -55,11 +56,11 @@ struct TextViewDecorator::Private
         for (auto lineIndexIter = firstIter; lineIndexIter <= lastIter; ++lineIndexIter)
         {
             const int lineIndex = *lineIndexIter;
-            const std::vector<JsonNode*>& nodeVec = self.m_jsonTree->lineIndex_To_NodeVec[lineIndex];
+            const std::vector<std::shared_ptr<TextViewJsonNode>>& nodeVec = self.m_jsonTree->lineIndex_To_NodeVec()[lineIndex];
             // TODO: Only check last?
             for (auto jsonNodeIter = nodeVec.rbegin(); jsonNodeIter != nodeVec.rend(); ++jsonNodeIter)
             {
-                JsonNode* const jsonNode = *jsonNodeIter;
+                const std::shared_ptr<TextViewJsonNode>& jsonNode = *jsonNodeIter;
                 if (false == canExpand(jsonNode)) {
                     continue;
                 }
@@ -86,7 +87,6 @@ struct TextViewDecorator::Private
         if (self.m_lineIndex_To_JsonTreeNode_Map.empty()) {
             return;
         }
-
         self.m_freeTreeNodeVec.reserve(self.m_freeTreeNodeVec.size() + self.m_lineIndex_To_JsonTreeNode_Map.size());
 
         for (auto iter = self.m_lineIndex_To_JsonTreeNode_Map.begin()
@@ -107,7 +107,7 @@ struct TextViewDecorator::Private
     }
 
     static bool
-    canExpand(JsonNode* const jsonNode)
+    canExpand(const std::shared_ptr<TextViewJsonNode>& jsonNode)
     {
         // (1) Do not allow root to be collapsed.
         const bool x = (nullptr != jsonNode->nullableParent()
@@ -118,7 +118,8 @@ struct TextViewDecorator::Private
     }
 
     static bool
-    isExpanded(const TextViewDecorator& self, JsonNode* const jsonNode)
+    isExpanded(const TextViewDecorator& self,
+               const std::shared_ptr<TextViewJsonNode>& jsonNode)
     {
         const bool x = Algorithm::Map::getOrDefault(self.m_jsonNode_To_IsExpanded_Map, jsonNode, true);
         return x;
@@ -137,7 +138,10 @@ struct TextViewDecorator::Private
 
     // Intentional: "Loud" method name to match return type.
     static const JsonTreeNode&
-    getFreeNodeConstRef(TextViewDecorator& self, const qreal lineSpacing, JsonNode* const jsonNode, const int lineIndex)
+    getFreeNodeConstRef(TextViewDecorator& self,
+                        const qreal lineSpacing,
+                        const std::shared_ptr<TextViewJsonNode>& jsonNode,
+                        const int lineIndex)
     {
         JsonTreeNode& node = getFreeNodeRef(self, lineSpacing, jsonNode, lineIndex);
 
@@ -153,7 +157,10 @@ struct TextViewDecorator::Private
 
     // Intentional: "Loud" method name to match return type.
     static JsonTreeNode&
-    getFreeNodeRef(TextViewDecorator& self, const qreal lineSpacing, JsonNode* const jsonNode, const int lineIndex)
+    getFreeNodeRef(TextViewDecorator& self,
+                   const qreal lineSpacing,
+                   const std::shared_ptr<TextViewJsonNode>& jsonNode,
+                   const int lineIndex)
     {
         JsonTreeNode nodeValue = getFreeNodeValue(self, lineSpacing, jsonNode);
         const auto pair = Algorithm::Map::insertNewOrAssert(self.m_lineIndex_To_JsonTreeNode_Map, lineIndex, nodeValue);
@@ -165,7 +172,9 @@ struct TextViewDecorator::Private
 
     // Intentional: "Loud" method name to match return type.
     static JsonTreeNode
-    getFreeNodeValue(TextViewDecorator& self, const qreal lineSpacing, JsonNode* const jsonNode)
+    getFreeNodeValue(TextViewDecorator& self,
+                     const qreal lineSpacing,
+                     const std::shared_ptr<TextViewJsonNode>& jsonNode)
     {
         if (self.m_freeTreeNodeVec.empty())
         {
@@ -189,7 +198,8 @@ struct TextViewDecorator::Private
     }
 
     static TreeNodeExpander*
-    newTreeNodeExpander(const TextViewDecorator& self, const qreal lineSpacing)
+    newTreeNodeExpander(const TextViewDecorator& self,
+                        const qreal lineSpacing)
     {
         QWidget* const parent = getParent(self);
         TreeNodeExpander* const w = new TreeNodeExpander{parent};
@@ -199,7 +209,8 @@ struct TextViewDecorator::Private
     }
 
     static QLabel*
-    newQLabel(const TextViewDecorator& self, JsonNode* const jsonNode)
+    newQLabel(const TextViewDecorator& self,
+              const std::shared_ptr<TextViewJsonNode>& jsonNode)
     {
         QWidget* const parent = getParent(self);
         QLabel* const w = new QLabel{parent};
@@ -217,7 +228,9 @@ struct TextViewDecorator::Private
     }
 
     static void
-    setQLabelText(const TextViewDecorator& self, QLabel* const label, JsonNode* const jsonNode)
+    setQLabelText(const TextViewDecorator& self,
+                  QLabel* const label,
+                  const std::shared_ptr<TextViewJsonNode>& jsonNode)
     {
         assert(jsonNode->childVec().empty() == false);
         // -1?  Always exclude final "}" or "]".
@@ -230,7 +243,7 @@ struct TextViewDecorator::Private
         }
         else {
             // Either "}" or "]"
-            JsonNode* const jsonNodeClose = jsonNode->childVec().back();
+            const std::shared_ptr<TextViewJsonNode>& jsonNodeClose = jsonNode->childVec().back();
             const QString& text = QString{"...%1  // size:%2"}.arg(jsonNodeClose->text()).arg(childCount);
             label->setText(text);
         }
@@ -270,20 +283,20 @@ struct TextViewDecorator::Private
     static void
     expand(const TextViewDecorator& self, const JsonTreeNode& node)
     {
-        JsonNode* const firstChild = node.jsonNode->childVec().front();
-        const TextViewPosition& firstPos = Algorithm::Map::getOrAssert(self.m_jsonTree->nodeToPosMap, firstChild);
-        JsonNode* const lastChild = node.jsonNode->childVec().back();
-        const TextViewPosition& lastPos = Algorithm::Map::getOrAssert(self.m_jsonTree->nodeToPosMap, lastChild);
+        const std::shared_ptr<TextViewJsonNode>& firstChild = node.jsonNode->childVec().front();
+        const TextViewPosition& firstPos = firstChild->pos();
+        const std::shared_ptr<TextViewJsonNode>& lastChild = node.jsonNode->childVec().back();
+        const TextViewPosition& lastPos = lastChild->pos();
         assert(firstPos.lineIndex <= lastPos.lineIndex);
 
         for (int lineIndex = firstPos.lineIndex;
              lineIndex <= lastPos.lineIndex;
              ++lineIndex)
         {
-            const std::vector<JsonNode*>& lineNodeVec = self.m_jsonTree->lineIndex_To_NodeVec[lineIndex];
+            const std::vector<std::shared_ptr<TextViewJsonNode>>& lineNodeVec = self.m_jsonTree->lineIndex_To_NodeVec()[lineIndex];
             assert(lineNodeVec.empty() == false);
             // It is most likely to be last, so perform reverse search.
-            std::vector<JsonNode*>::const_reverse_iterator found =
+            std::vector<std::shared_ptr<TextViewJsonNode>>::const_reverse_iterator found =
                 std::find_if(lineNodeVec.rbegin(), lineNodeVec.rend(), &Private::canExpand);
 
             if (lineNodeVec.rend() == found)
@@ -292,9 +305,9 @@ struct TextViewDecorator::Private
                 self.m_textView.docView().showLine(lineIndex);
             }
             else {
-                JsonNode* const jsonNode = *found;
-                JsonNode* const lastChild2 = jsonNode->childVec().back();
-                const TextViewPosition& lastPos2 = self.m_jsonTree->nodeToPosMap[lastChild2];
+                const std::shared_ptr<TextViewJsonNode>& jsonNode = *found;
+                const std::shared_ptr<TextViewJsonNode>& lastChild2 = jsonNode->childVec().back();
+                const TextViewPosition& lastPos2 = lastChild2->pos();
 
                 if (Private::isExpanded(self, jsonNode))
                 {
@@ -313,10 +326,10 @@ struct TextViewDecorator::Private
     static void
     collapse(const TextViewDecorator& self, const JsonTreeNode& node)
     {
-        JsonNode* const firstChild = node.jsonNode->childVec().front();
-        const TextViewPosition& firstPos = self.m_jsonTree->nodeToPosMap[firstChild];
-        JsonNode* const lastChild = node.jsonNode->childVec().back();
-        const TextViewPosition& lastPos = self.m_jsonTree->nodeToPosMap[lastChild];
+        const std::shared_ptr<TextViewJsonNode>& firstChild = node.jsonNode->childVec().front();
+        const TextViewPosition& firstPos = firstChild->pos();
+        const std::shared_ptr<TextViewJsonNode>& lastChild = node.jsonNode->childVec().back();
+        const TextViewPosition& lastPos = lastChild->pos();
         self.m_textView.docView().hideLineRange(firstPos.lineIndex, lastPos.lineIndex);
     }
 
@@ -325,7 +338,7 @@ struct TextViewDecorator::Private
     {
         // How much to update?  If we expand or collapse, the viewport will only change *below* line of node.jsonNode.
         // However, it is non-trivial to calculate the first visible line *after* node.jsonNode.  Solution?  Repaint *one* extra line.
-        const TextViewPosition& pos = self.m_jsonTree->nodeToPosMap[node.jsonNode];
+        const TextViewPosition& pos = node.jsonNode->pos();
         const qreal y = self.m_textView.heightForVisibleLineIndex(pos.lineIndex);
         QRect viewportRect = self.m_textView.viewport()->rect();
         viewportRect.setTop(y);
@@ -389,7 +402,7 @@ TextViewDecorator(TextView& parent)
 // public
 void
 TextViewDecorator::
-setJsonTree(const std::shared_ptr<JsonTree>& jsonTree)
+setJsonTree(const std::shared_ptr<TextViewJsonTree>& jsonTree)
 {
     assert(nullptr != jsonTree);
     m_jsonTree = jsonTree;
