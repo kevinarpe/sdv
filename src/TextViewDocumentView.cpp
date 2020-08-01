@@ -5,6 +5,7 @@
 #include "TextViewDocumentView.h"
 #include <numeric>
 #include <algorithm>
+#include <QDebug>
 #include "TextViewDocument.h"
 #include "Algorithm.h"
 #include "CountingIterator.h"
@@ -204,6 +205,7 @@ const
     return x;
 }
 
+/** {@inheritDoc} */
 // public
 int
 TextViewDocumentView::
@@ -217,6 +219,7 @@ const
     }
     auto iter = Private::findOrAssert(*this, lineIndex);
     const int x = iter - m_visibleLineIndexVec.begin();
+//    qDebug() << "findNormalisedLineIndex" << lineIndex << x;
     return x;
 }
 

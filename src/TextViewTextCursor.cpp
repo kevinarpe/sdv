@@ -291,7 +291,7 @@ struct TextViewTextCursor::Private
     }
 
     /*
-     * Ex: &moveLeft
+     * Ex: {@code &moveLeft}
      *
      * @return if text cursor was moved, return {@code true}
      *         <br>Obvious example where text cursor does not move: If text cursor is at (0, 0), move left will return {@code false}.
@@ -313,9 +313,11 @@ struct TextViewTextCursor::Private
     static void
     clearSelection(TextViewTextCursor& self)
     {
-        if (self.m_selection.isValid())
+        const bool isValid = self.m_selection.isValid();
+        // Intentional: Always fully invalidate begin and end.
+        self.m_selection.invalidate();
+        if (isValid)
         {
-            self.m_selection.invalidate();
             update(self);
             emit self.m_textView.signalSelectedTextChanged();
         }
@@ -723,8 +725,11 @@ struct TextViewTextCursor::Private
         else if (pos.pos.lineIndex > self.m_textView.lastFullyVisibleLineIndex())
         {
             QScrollBar* const vbar = self.m_textView.verticalScrollBar();
-            const int vbarValue = std::max(0, pos.pos.lineIndex - (vbar->pageStep() - 1));
-            scrollToLineIndex(self, vbarValue);
+            // @Debug
+            const int vbarValueOld = vbar->value();
+            const int pageStep = vbar->pageStep();
+            const int vbarValueNew = self.m_docView->nextVisibleLineIndex(pos.pos.lineIndex, -1 * (pageStep - 1));
+            scrollToLineIndex(self, vbarValueNew);
         }
     }
 

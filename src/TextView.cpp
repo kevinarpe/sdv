@@ -779,13 +779,19 @@ paintEvent(QPaintEvent* event)  // override
             // Only adjust if we have a "full view".
             if (m_viewportVisibleLineCount == visibleLineIndex && m_viewportVisibleLineCount > m_viewportFullyVisibleLineCount)
             {
-                --lineIndexIter;
+                // Currently, lineIndexIter points to an exclusive end-point.  Step back once for inclusive end-point (not fully visible).
+                // Step back again for last fully visible line.
+                lineIndexIter -= 2;
+                assert(m_lastFullyVisibleLineIndex != *lineIndexIter);
                 m_lastFullyVisibleLineIndex = *lineIndexIter;
             }
             if (first != m_firstVisibleLineIndex || lastFull != m_lastFullyVisibleLineIndex || last != m_lastVisibleLineIndex)
             {
                 emit signalVisibleLinesChanged();
             }
+//            qDebug() << "m_firstVisibleLineIndex" << m_firstVisibleLineIndex
+//                     << "m_lastFullyVisibleLineIndex" << m_lastFullyVisibleLineIndex
+//                     << "m_lastVisibleLineIndex" << m_lastVisibleLineIndex;
         }
     }
     Private::paintTextCursor(*this, painter);
