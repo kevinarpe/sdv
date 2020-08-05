@@ -261,4 +261,16 @@ horizontalMove(const QFontMetricsF& fontMetricsF, const qreal fontWidth)
     return r.fontWidth;
 }
 
+// public
+void
+TextViewGraphemeCursor::
+setPosition(const TextViewPosition& pos)
+{
+    if (pos.lineIndex != m_pos.pos.lineIndex)
+    {
+        setLineIndexThenHome(pos.lineIndex);
+    }
+    setCharIndex(pos.charIndex);
+}
+
 }  // namespace SDV

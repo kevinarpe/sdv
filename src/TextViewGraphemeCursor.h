@@ -44,6 +44,7 @@ public:
     void setLineIndexThenHome(int lineIndex);
     void setLineIndexThenEnd(int lineIndex);
     TextSegmentFontWidth horizontalMove(const QFontMetricsF& fontMetricsF, qreal fontWidth);
+    void setPosition(const TextViewPosition& pos);
 
 private:
     struct Private;

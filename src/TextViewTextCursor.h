@@ -59,6 +59,7 @@ public:
     bool hasMoved() const { return m_hasMoved; }
     void afterPaintEvent();
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void setPosition(const TextViewPosition& pos);
 
 public slots:
     /**

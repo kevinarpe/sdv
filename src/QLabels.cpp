@@ -10,7 +10,7 @@ namespace SDV {
 // public static
 void
 QLabels::
-setSelectable(QLabel* label)
+setSelectable(QLabel* const label)
 {
     // Ref: https://stackoverflow.com/a/17957750/257299
     label->setTextInteractionFlags(Qt::TextInteractionFlag::TextSelectableByMouse);

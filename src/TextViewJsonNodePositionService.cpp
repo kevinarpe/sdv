@@ -33,7 +33,7 @@ TextViewJsonNodePositionService(const TextViewJsonTree& jsonTree)
 
 struct Compare
 {
-    bool operator()(const std::shared_ptr<TextViewJsonNode>& jsonNode, 
+    bool operator()(const std::shared_ptr<TextViewJsonNode>& jsonNode,
                     const TextViewPosition& pos)
     {
         const int c = jsonNode->compare(pos);
@@ -53,6 +53,8 @@ const
     if (m_jsonNodeVec.end() != iter)
     {
         const std::shared_ptr<TextViewJsonNode>& jsonNode = *iter;
+        // Controversial: I still don't know the best "style" for node path....
+        return jsonNode;
         const int c = jsonNode->compare(pos);
         if (0 == c) {
 //            qDebug() << "match:" << jsonNode->text();

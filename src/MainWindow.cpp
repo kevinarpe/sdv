@@ -397,6 +397,7 @@ struct MainWindow::Private
         self.setWindowTitle(self.m_input.description() + " - " + kWindowTitle);
         setStatusBarText(self, result.textStats);
         self.m_mainWindowManagerToken->getMainWindowManager().afterOpenInput(self.m_input);
+        slotTextCursorPositionChanged(self);
     }
 
     static void
@@ -527,6 +528,7 @@ struct MainWindow::Private
             );
     }
 
+    // TOOD: Move all of this to a separate class?
     static void
     slotTextCursorPositionChanged(MainWindow& self)
     {
@@ -536,14 +538,40 @@ struct MainWindow::Private
         // Also: Update status bar to show text cursor position.
         // @Nullable
         const std::shared_ptr<TextViewJsonNode>& jsonNode = self.m_jsonNodePositionService->tryFind(pos.pos);
-        if (nullptr == jsonNode)
+        self.m_hyperlinkToNodeMap.clear();
+        int index = 0;
+        QString text{};
+        for (TextViewJsonNode* n = jsonNode.get();
+             nullptr != n;
+             n = n->nullableParent(), ++index)
         {
-            // clear
+            const QString& indexStr = QString::number(index);
+            Algorithm::Map::insertNewOrAssert(self.m_hyperlinkToNodeMap, indexStr, n);
+            const int arrayIndex = n->arrayIndex();
+            if (arrayIndex >= 0)
+            {
+                text.prepend(QString{QLatin1String{"[<a href='%1'>%2</a>]"}}.arg(indexStr).arg(arrayIndex));
+            }
+            else {
+                const JsonNodeType type = n->type();
+                if (JsonNodeType::Key == type)
+                {
+                    text.prepend(QString{QLatin1String{"[<a href='%1'>%2</a>]"}}.arg(indexStr).arg(n->text()));
+                }
+            }
         }
-        else {
-            // how do we know the index of an array element?
-            // TODO: Walk to root.  Each step can be a separate hyperlink so user can click to jump.
-        }
+        text.prepend(QLatin1Char{'$'});
+        // TODO: What font to use?
+        self.m_statusBar->nodePathLabel()->setText(text);
+    }
+
+    static void
+    slotNodePathLabelLinkActivated(MainWindow& self, const QString& href)
+    {
+        TextViewJsonNode* const n = Algorithm::Map::getOrAssert(self.m_hyperlinkToNodeMap, href);
+        TextViewTextCursor& textCursor = self.m_textView->textCursor();
+        const TextViewPosition& pos = n->pos();
+        textCursor.setPosition(pos);
     }
 };
 
@@ -571,13 +599,13 @@ MainWindow(MainWindowManager& mainWindowManager,
     setAttribute(Qt::WidgetAttribute::WA_DeleteOnClose);
     setWindowTitle(kWindowTitle);
     {
-        QWidget* centralWidget = new QWidget{this};
+        QWidget* const centralWidget = new QWidget{this};
         m_textView = new TextView{centralWidget};
         m_textView->setPaintForegroundContext(std::make_shared<PaintForegroundContextImp>());
         m_textViewLineNumberArea = new TextViewLineNumberArea{*m_textView, centralWidget};
         m_textViewDecorator = new TextViewDecorator{*m_textView};
 
-        QHBoxLayout* hboxLayout = new QHBoxLayout{};
+        QHBoxLayout* const hboxLayout = new QHBoxLayout{};
         hboxLayout->setContentsMargins(0, 0, 0, 0);
         hboxLayout->setSpacing(0);
         hboxLayout->addWidget(m_textViewLineNumberArea);
@@ -599,7 +627,7 @@ MainWindow(MainWindowManager& mainWindowManager,
 
     QMenu* fileMenu = menuBar()->addMenu("&File");
     fileMenu->addAction(
-        "&Open File...", [this]() { Private::slotOpen(*this); }, QKeySequence::StandardKey::Open);
+        "&Open File...", this, [this]() { Private::slotOpen(*this); }, QKeySequence::StandardKey::Open);
 
     fileMenu->addAction("Open from Clipboard", [this]() { Private::slotOpenClipboardText(*this); });
 
@@ -680,6 +708,11 @@ MainWindow(MainWindowManager& mainWindowManager,
                      // Optional: Provide context QObject to help with disconnect (during dtor).
                      this,
                      [this]() { Private::slotTextCursorPositionChanged(*this); });
+
+    QObject::connect(m_statusBar->nodePathLabel(),
+                     &QLabel::linkActivated,
+                     this,
+                     [this](const QString& href) { Private::slotNodePathLabelLinkActivated(*this, href); });
 
     Private::openInput(*this, input);
 }

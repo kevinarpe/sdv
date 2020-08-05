@@ -1034,6 +1034,18 @@ eventFilter(QObject* const watched, QEvent* const event)  // override
     return false;
 }
 
+// public
+void
+TextViewTextCursor::
+setPosition(const TextViewPosition& pos)
+{
+    const TextViewGraphemePosition origPos = m_graphemeCursor->pos();
+    m_graphemeCursor->setPosition(pos);
+    Private::horizontalScrollToEnsureVisible(*this);
+    Private::verticalScrollToEnsureVisible(*this);
+    Private::updateAfterMove(*this, origPos);
+}
+
 // public slot
 void
 TextViewTextCursor::

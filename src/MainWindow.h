@@ -25,6 +25,7 @@ class MainWindowThreadWorker;
 class TextViewTextStatsService;
 class TextViewJsonTree;
 class TextViewJsonNodePositionService;
+class TextViewJsonNode;
 
 class MainWindow : public QMainWindow
 {
@@ -73,6 +74,11 @@ private:
     std::unique_ptr<TextViewJsonNodePositionService> m_jsonNodePositionService;
     std::unordered_map<QAction*, MainWindowInput> m_windowMenuAction_To_Input_Map;
     std::vector<QMetaObject::Connection> m_qObjectConnectionVec;
+    /**
+     * Keys are always integers that count from zero, e.g., {@code "0"}.  The deepest nodes in a node path (from current node to root)
+     * have the lowest values, and the node just before root always has hyperlink {@code "0"}.
+     */
+    std::unordered_map<QString, TextViewJsonNode*> m_hyperlinkToNodeMap;
 
     struct
     {
