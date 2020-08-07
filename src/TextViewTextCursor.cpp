@@ -17,6 +17,7 @@
 namespace SDV {
 
 enum class StopEventPropagation { Yes, No };
+enum class HasCursorMoved { Yes, No };
 static const QString kEmptyTextLine{};
 
 struct TextViewTextCursor::Private
@@ -296,14 +297,14 @@ struct TextViewTextCursor::Private
      * @return if text cursor was moved, return {@code true}
      *         <br>Obvious example where text cursor does not move: If text cursor is at (0, 0), move left will return {@code false}.
      */
-    using TryMoveFunc = bool (*)(TextViewTextCursor& self);
+    using TryMoveFunc = HasCursorMoved (*)(TextViewTextCursor& self);
 
     static void
     move(TextViewTextCursor& self, TryMoveFunc moveFunc)
     {
         // Intentional: Copy not reference.  Why?  moveFunc may change position.
         const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
-        if (moveFunc(self))
+        if (HasCursorMoved::Yes == moveFunc(self))
         {
             updateAfterMove(self, origPos);
             clearSelection(self);
@@ -329,7 +330,7 @@ struct TextViewTextCursor::Private
         // Intentional: Copy not reference.  Why?  moveFunc may change position.
         const TextViewGraphemePosition origPos = self.m_graphemeCursor->pos();
         const TextViewSelection origSelection = self.m_selection;
-        if (moveFunc(self))
+        if (HasCursorMoved::Yes == moveFunc(self))
         {
             const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
             if (self.m_selection.begin.isValid())
@@ -352,7 +353,7 @@ struct TextViewTextCursor::Private
         }
     }
 
-    static bool
+    static HasCursorMoved
     moveLeft(TextViewTextCursor& self)
     {
         const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
@@ -364,18 +365,18 @@ struct TextViewTextCursor::Private
                 self.m_graphemeCursor->setLineIndexThenEnd(lineIndex);
                 horizontalScrollToEnsureVisible(self);
                 verticalScrollToEnsureVisible(self);
-                return true;
+                return HasCursorMoved::Yes;
             }
         }
         else {  // if (self.m_pos.columnIndex > 0)
             self.m_graphemeCursor->left();
             horizontalScrollToEnsureVisible(self);
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     moveRight(TextViewTextCursor& self)
     {
         const TextViewGraphemePosition& pos = self.m_graphemeCursor->pos();
@@ -388,25 +389,25 @@ struct TextViewTextCursor::Private
                 scrollToMin(self, self.m_textView.horizontalScrollBar());
                 self.m_graphemeCursor->setLineIndexThenHome(lineIndex);
                 verticalScrollToEnsureVisible(self);
-                return true;
+                return HasCursorMoved::Yes;
             }
         }
         else {  // if (self.m_pos.columnIndex < line.length())
             self.m_graphemeCursor->right();
             horizontalScrollToEnsureVisible(self);
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     moveWordLeft(TextViewTextCursor& self)
     {
-        return false;
+        return HasCursorMoved::No;
     }
 
     // TODO: Can we do this *without* a regex?  Why?  moveWordLeft() will require reverse find on regex.  Tough!
-    static bool
+    static HasCursorMoved
     moveWordRight(TextViewTextCursor& self)
     {
         const QRegularExpression rx{"\\b"};
@@ -437,13 +438,13 @@ struct TextViewTextCursor::Private
                     int dummy = 1;
                 }
                 updateAfterMove(self, origPos);
-                return true;
+                return HasCursorMoved::Yes;
             }
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     moveHome(TextViewTextCursor& self)
     {
         verticalScrollToEnsureVisible(self);
@@ -454,12 +455,12 @@ struct TextViewTextCursor::Private
             self.m_fontWidth.beforeGrapheme = 0;
             self.m_graphemeCursor->home();
             scrollToMin(self, self.m_textView.horizontalScrollBar());
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     moveEnd(TextViewTextCursor& self)
     {
         verticalScrollToEnsureVisible(self);
@@ -467,12 +468,12 @@ struct TextViewTextCursor::Private
         {
             self.m_graphemeCursor->end();
             horizontalScrollToEnsureVisible(self);
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     moveDocHome(TextViewTextCursor& self)
     {
         verticalScrollToEnsureVisible(self);
@@ -485,12 +486,12 @@ struct TextViewTextCursor::Private
             self.m_fontWidth.beforeGrapheme = 0;
             scrollToMin(self, self.m_textView.horizontalScrollBar());
             scrollToMin(self, self.m_textView.verticalScrollBar());
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     moveDocEnd(TextViewTextCursor& self)
     {
         verticalScrollToEnsureVisible(self);
@@ -502,12 +503,12 @@ struct TextViewTextCursor::Private
             self.m_graphemeCursor->setLineIndexThenEnd(lineIndex);
             horizontalScrollToEnsureVisible(self);
             scrollToMax(self, self.m_textView.verticalScrollBar());
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     moveUp(TextViewTextCursor& self)
     {
         verticalScrollToEnsureVisible(self);
@@ -518,12 +519,12 @@ struct TextViewTextCursor::Private
         {
             verticalMove(self, lineIndex);
             verticalScrollToEnsureVisible(self);
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     moveDown(TextViewTextCursor& self)
     {
         verticalScrollToEnsureVisible(self);
@@ -534,12 +535,12 @@ struct TextViewTextCursor::Private
         {
             verticalMove(self, lineIndex);
             verticalScrollToEnsureVisible(self);
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     movePageUp(TextViewTextCursor& self)
     {
         const int fullyVisibleLineCount = self.m_textView.verticalScrollBar()->pageStep();
@@ -551,12 +552,12 @@ struct TextViewTextCursor::Private
         {
             scrollPage(self, self.m_textView.verticalScrollBar(), ScrollDirection::Up);
             verticalMove(self, lineIndex);
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     movePageDown(TextViewTextCursor& self)
     {
         const int fullyVisibleLineCount = self.m_textView.verticalScrollBar()->pageStep();
@@ -568,12 +569,12 @@ struct TextViewTextCursor::Private
         {
             scrollPage(self, self.m_textView.verticalScrollBar(), ScrollDirection::Down);
             verticalMove(self, lineIndex);
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     moveViewTop(TextViewTextCursor& self)
     {
         verticalScrollToEnsureVisible(self);
@@ -583,12 +584,12 @@ struct TextViewTextCursor::Private
         if (lineIndex != pos.pos.lineIndex)
         {
             verticalMove(self, lineIndex);
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
-    static bool
+    static HasCursorMoved
     moveViewBottom(TextViewTextCursor& self)
     {
         verticalScrollToEnsureVisible(self);
@@ -598,9 +599,9 @@ struct TextViewTextCursor::Private
         if (lineIndex != pos.pos.lineIndex)
         {
             verticalMove(self, lineIndex);
-            return true;
+            return HasCursorMoved::Yes;
         }
-        return false;
+        return HasCursorMoved::No;
     }
 
     static void
@@ -969,7 +970,10 @@ void
 TextViewTextCursor::
 reset()
 {
+    const TextViewGraphemePosition& origPos = m_graphemeCursor->pos();
     m_graphemeCursor->reset();
+    // Intentional: Treat this as a move.  Horizontal scrolling shifts the on-screen position of text cursor.
+    Private::updateAfterMove(*this, origPos);
 }
 
 // public

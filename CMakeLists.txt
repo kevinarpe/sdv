@@ -152,6 +152,8 @@ add_executable(sdv
         src/QSizeGrips.cpp
         src/QSizeGrips.h
         src/QLabels.cpp
-        src/QLabels.h)
+        src/QLabels.h
+        src/MainWindowStatusBarNodePathLabel.cpp
+        src/MainWindowStatusBarNodePathLabel.h)
 
 target_link_libraries(sdv Qt5::Widgets)

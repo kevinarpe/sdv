@@ -24,7 +24,6 @@ class TextViewDecorator;
 class MainWindowThreadWorker;
 class TextViewTextStatsService;
 class TextViewJsonTree;
-class TextViewJsonNodePositionService;
 class TextViewJsonNode;
 
 class MainWindow : public QMainWindow
@@ -71,7 +70,6 @@ private:
     MainWindowThreadWorker* m_threadWorker;
     // Enable only if necessary.
 //    std::shared_ptr<TextViewJsonTree> m_jsonTree;
-    std::unique_ptr<TextViewJsonNodePositionService> m_jsonNodePositionService;
     std::unordered_map<QAction*, MainWindowInput> m_windowMenuAction_To_Input_Map;
     std::vector<QMetaObject::Connection> m_qObjectConnectionVec;
     /**

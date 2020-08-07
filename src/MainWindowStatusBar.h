@@ -10,6 +10,9 @@ class QLabel;
 
 namespace SDV {
 
+class TextView;
+class MainWindowStatusBarNodePathLabel;
+
 class MainWindowStatusBar : public BaseStatusBar
 {
     Q_OBJECT
@@ -17,17 +20,17 @@ class MainWindowStatusBar : public BaseStatusBar
 public:
     using Base = BaseStatusBar;
 
-    explicit MainWindowStatusBar(QWidget* parent = nullptr);
+    explicit MainWindowStatusBar(TextView* textView, QWidget* parent = nullptr);
     ~MainWindowStatusBar() override = default;
 
-    QLabel* nodePathLabel() const { return m_nodePathLabel; }
+    MainWindowStatusBarNodePathLabel* nodePathLabel() const { return m_nodePathLabel; }
     QLabel* textStatsLabel() const { return m_textStatsLabel; }
 
 public slots:
     void slotSetTextCursorPosition(int lineIndex, int columnIndex);
 
 private:
-    QLabel* m_nodePathLabel;
+    MainWindowStatusBarNodePathLabel* m_nodePathLabel;
     QLabel* m_textCursorPositionLabel;
     QLabel* m_textStatsLabel;
 };

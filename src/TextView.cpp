@@ -146,7 +146,7 @@ struct TextView::Private
     }
 
     static QAction*
-    createCopyAction(const TextView& self, QObject* parent)
+    createCopyAction(const TextView& self, QObject* const parent)
     {
         const QIcon& icon = QIcon::fromTheme(Constants::IconThemeName::kEditCopy);
         // @Debug
@@ -203,6 +203,7 @@ struct TextView::Private
     static QPoint
     getContextMenuEventPos(const TextView& self, QContextMenuEvent* event)
     {
+        // Ref: https://stackoverflow.com/questions/63303019/when-does-qcontextmenueventreason-return-qcontextmenueventreasonother
         const QContextMenuEvent::Reason reason = event->reason();
         switch (reason)
         {
@@ -852,12 +853,24 @@ void
 TextView::
 contextMenuEvent(QContextMenuEvent* event)  // override
 {
+    event->accept();
     const QPoint& pos = Private::getContextMenuEventPos(*this, event);
     QMenu* const menu = createContextMenu(pos);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    // Always the same as event->globalPos() when QContextMenuEvent::Reason::Mouse.
     const QPoint& globalPos = viewport()->mapToGlobal(pos);
+
+    // Ref: https://stackoverflow.com/questions/63303201/when-to-call-qmenupopup-vs-qmenuexec
     // @Blocking
     menu->exec(globalPos);
-    delete menu;
+    // Replaced by: menu->setAttribute(Qt::WA_DeleteOnClose);
+//    delete menu;
+
+    // Unsure: Seems a bit weird in a debugger!
+//    // See: QLabel::contextMenuEvent(...)
+//    menu->setAttribute(Qt::WA_DeleteOnClose);
+//    // @NonBlocking
+//    menu->popup(globalPos);
 }
 
 // protected virtual

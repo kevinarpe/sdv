@@ -9,6 +9,7 @@
 #include <QBoxLayout>
 #include <QResizeEvent>
 #include "QLabels.h"
+#include "MainWindowStatusBarNodePathLabel.h"
 
 namespace SDV {
 
@@ -31,11 +32,11 @@ setSelectable(QLabel* const label)
 
 // public explicit
 MainWindowStatusBar::
-MainWindowStatusBar(QWidget* parent /*= nullptr*/)
+MainWindowStatusBar(TextView* const textView, QWidget* parent /*= nullptr*/)
     : Base{parent}
 {
     // TODO: Add context menu with single item: Copy
-    m_nodePathLabel = new QLabel{};
+    m_nodePathLabel = new MainWindowStatusBarNodePathLabel{textView, this};
     m_nodePathLabel->setTextFormat(Qt::TextFormat::RichText);
     setSunkenPanel(m_nodePathLabel);
 

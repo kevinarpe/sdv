@@ -34,7 +34,7 @@
 #include "TextViewTextStatsService.h"
 #include "TextViewJsonTree.h"
 #include "TextViewJsonNode.h"
-#include "TextViewJsonNodePositionService.h"
+#include "MainWindowStatusBarNodePathLabel.h"
 
 namespace SDV {
 
@@ -182,7 +182,6 @@ struct MainWindow::Private
         return x;
     }
 
-    // TODO: Is this triggered when selection is cleared?  It seems not...
     static void
     slotSelectedTextChanged(MainWindow& self)
     {
@@ -388,16 +387,15 @@ struct MainWindow::Private
         self.m_input = input;
         // Enable only if necessary.
 //        self.m_jsonTree = result.jsonTree;
-        self.m_jsonNodePositionService = std::make_unique<TextViewJsonNodePositionService>(*result.jsonTree);
-        self.m_textViewDecorator->setJsonTree(result.jsonTree);
-        applyFormats(self, result.jsonTree);
         self.m_textView->setDoc(result.doc);
+        self.m_textViewDecorator->setJsonTree(result.jsonTree);
+        self.m_statusBar->nodePathLabel()->setJsonTree(*result.jsonTree);
+        applyFormats(self, result.jsonTree);
         self.m_textView->setVisible(true);
         self.m_fileCloseAction->setEnabled(true);
         self.setWindowTitle(self.m_input.description() + " - " + kWindowTitle);
         setStatusBarText(self, result.textStats);
         self.m_mainWindowManagerToken->getMainWindowManager().afterOpenInput(self.m_input);
-        slotTextCursorPositionChanged(self);
     }
 
     static void
@@ -527,52 +525,6 @@ struct MainWindow::Private
             + "<br>Source Code: <a href='https://github.com/kevinarpe/sdv'>https://github.com/kevinarpe/sdv</a>"
             );
     }
-
-    // TOOD: Move all of this to a separate class?
-    static void
-    slotTextCursorPositionChanged(MainWindow& self)
-    {
-        // TODO: Move off-thread for speed?  Not sure...
-        const TextViewGraphemePosition& pos = self.m_textView->textCursor().position();
-        self.m_statusBar->slotSetTextCursorPosition(pos.pos.lineIndex, pos.pos.charIndex);
-        // Also: Update status bar to show text cursor position.
-        // @Nullable
-        const std::shared_ptr<TextViewJsonNode>& jsonNode = self.m_jsonNodePositionService->tryFind(pos.pos);
-        self.m_hyperlinkToNodeMap.clear();
-        int index = 0;
-        QString text{};
-        for (TextViewJsonNode* n = jsonNode.get();
-             nullptr != n;
-             n = n->nullableParent(), ++index)
-        {
-            const QString& indexStr = QString::number(index);
-            Algorithm::Map::insertNewOrAssert(self.m_hyperlinkToNodeMap, indexStr, n);
-            const int arrayIndex = n->arrayIndex();
-            if (arrayIndex >= 0)
-            {
-                text.prepend(QString{QLatin1String{"[<a href='%1'>%2</a>]"}}.arg(indexStr).arg(arrayIndex));
-            }
-            else {
-                const JsonNodeType type = n->type();
-                if (JsonNodeType::Key == type)
-                {
-                    text.prepend(QString{QLatin1String{"[<a href='%1'>%2</a>]"}}.arg(indexStr).arg(n->text()));
-                }
-            }
-        }
-        text.prepend(QLatin1Char{'$'});
-        // TODO: What font to use?
-        self.m_statusBar->nodePathLabel()->setText(text);
-    }
-
-    static void
-    slotNodePathLabelLinkActivated(MainWindow& self, const QString& href)
-    {
-        TextViewJsonNode* const n = Algorithm::Map::getOrAssert(self.m_hyperlinkToNodeMap, href);
-        TextViewTextCursor& textCursor = self.m_textView->textCursor();
-        const TextViewPosition& pos = n->pos();
-        textCursor.setPosition(pos);
-    }
 };
 
 // public static
@@ -590,11 +542,9 @@ MainWindow(MainWindowManager& mainWindowManager,
       m_formatMap{formatMap},
       // Intentional: Always start as 'None'.  Only update 'm_input' if 'input' is opened successfully.
       m_input{MainWindowInput::kNone},
-      m_statusBar{new MainWindowStatusBar{this}},
       m_mainWindowManagerToken{mainWindowManager.add(*this)},
       m_isClosing{false},
-      m_threadWorker{threadWorker},
-      m_jsonNodePositionService{std::make_unique<TextViewJsonNodePositionService>()}
+      m_threadWorker{threadWorker}
 {
     setAttribute(Qt::WidgetAttribute::WA_DeleteOnClose);
     setWindowTitle(kWindowTitle);
@@ -616,14 +566,15 @@ MainWindow(MainWindowManager& mainWindowManager,
     m_textStats.service = std::make_shared<TextViewTextStatsService>(m_textView->docViewPtr());
     m_textStats.serviceId = m_threadWorker->insertNewTextStatsServiceOrAssert(m_textStats.service);
 
-    setAcceptDrops(true);
-    setStatusBar(m_statusBar);
-    m_statusBar->textStatsLabel()->setTextFormat(Qt::TextFormat::RichText);
-
     m_textView->setFont(QFont{"Deja Vu Sans Mono", 12});
     // Intentional: Use default from IntelliJ.
     m_textView->textCursor().slotSetBlinkMillis(500);
     m_textView->setVisible(false);
+
+    m_statusBar = new MainWindowStatusBar{m_textView, this};
+    setAcceptDrops(true);
+    setStatusBar(m_statusBar);
+    m_statusBar->textStatsLabel()->setTextFormat(Qt::TextFormat::RichText);
 
     QMenu* fileMenu = menuBar()->addMenu("&File");
     fileMenu->addAction(
@@ -703,16 +654,6 @@ MainWindow(MainWindowManager& mainWindowManager,
                      {
                          Private::slotCalcTextSelectionStatsComplete(*this, result);
                      });
-
-    QObject::connect(&(m_textView->textCursor()), &TextViewTextCursor::signalPositionChanged,
-                     // Optional: Provide context QObject to help with disconnect (during dtor).
-                     this,
-                     [this]() { Private::slotTextCursorPositionChanged(*this); });
-
-    QObject::connect(m_statusBar->nodePathLabel(),
-                     &QLabel::linkActivated,
-                     this,
-                     [this](const QString& href) { Private::slotNodePathLabelLinkActivated(*this, href); });
 
     Private::openInput(*this, input);
 }
